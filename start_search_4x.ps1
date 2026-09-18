@@ -1,7 +1,7 @@
-# WhaleSweep — one-command, N-way parallel search.
+﻿# WhaleSweep -- one-command, N-way parallel search.
 # Mirrors ../MeanReversion/start_search_4x.ps1's own approach deliberately
 # (Start-Process -FilePath py directly, no intermediate cmd.exe to
-# mis-parse a quote — see that script's own comments for why).
+# mis-parse a quote -- see that script's own comments for why).
 #
 # Splits the full asset universe into $Groups round-robin buckets (each
 # process gets its own WS_ASSETS + WS_OUTPUT_DIR so they never write to
@@ -15,7 +15,7 @@
 #   .\start_search_4x.ps1                     # 4 groups, 100,000-iteration ceiling per process
 #   .\start_search_4x.ps1 -Groups 6 -Iterations 50000
 #
-# Stop everything (hard kill — loses progress since the last checkpoint,
+# Stop everything (hard kill -- loses progress since the last checkpoint,
 # <= WS_CHECKPOINT_EVERY iterations per group):
 #   Get-Process -Name py -ErrorAction SilentlyContinue | Stop-Process
 
@@ -35,7 +35,7 @@ $allAssets = @(
 # Only search assets that actually precomputed successfully.
 $available = $allAssets | Where-Object { Test-Path "ws_precomputed_$($_)_1min.parquet" }
 if ($available.Count -eq 0) {
-    Write-Error "No ws_precomputed_*.parquet files found — run precompute_all.ps1 first."
+    Write-Error "No ws_precomputed_*.parquet files found -- run precompute_all.ps1 first."
     exit 1
 }
 Write-Host "Assets available for search: $($available -join ', ')" -ForegroundColor Cyan
