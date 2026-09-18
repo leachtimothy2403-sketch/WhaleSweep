@@ -27,8 +27,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $allAssets = @(
-    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL"
+    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40"
 )
+# NOTE: GER40 is deliberately LAST in this list, not alphabetical/grid
+# order -- round-robin (index % $Groups) puts it in the same group as
+# NDX100 (index 7 % 4 == 3 == index 3 % 4), which is the whole point:
+# added 2026-09-19 specifically because the 4th of 4 parallel groups was
+# left with only NDX100 after the initial 7-asset trim. Reordering this
+# array changes which group GER40 lands in.
 
 # Only search assets that actually precomputed successfully.
 $available = $allAssets | Where-Object { Test-Path "ws_precomputed_$($_)_1min.parquet" }

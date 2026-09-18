@@ -24,17 +24,22 @@ that don't drift against NY local time matter here in a way they didn't
 for MeanReversion's fixed intraday fair-value anchor. See README.md's
 "Assumptions" section.
 
-*** ASSET UNIVERSE (narrowed 2026-09-19 per Tim) ***
-Only 7 assets: EURUSD, GBPUSD, XAUUSD (gold), NDX100, SPX500, US30, AAPL.
-A broader 18-asset universe (more forex majors + GER40/FRA40/UK100/
-JPN225 + WMT/XOM/DIS) was precomputed first -- see git history if
-that's ever worth reviving -- but this file now only defines the 7 in
-active use. Confirmed real history depth from the VPS's own
+*** ASSET UNIVERSE (narrowed 2026-09-19, GER40 added back same day, per
+Tim) ***
+8 assets: EURUSD, GBPUSD, XAUUSD (gold), NDX100, SPX500, US30, GER40
+(DAX), AAPL. A broader 18-asset universe (more forex majors + FRA40/
+UK100/JPN225 + WMT/XOM/DIS) was precomputed first -- see git history if
+that's ever worth reviving. GER40 was added back specifically to give
+the 4-way parallel VPS launcher's 4th process group a second asset
+(it was left with NDX100 alone after the initial 7-asset trim's
+round-robin split). Confirmed real history depth from the VPS's own
 precompute_all.ps1 run (2026-09-19): EURUSD/GBPUSD/US30 ~10.2yr, NDX100
-~10.8yr, SPX500 ~10.1yr, AAPL ~9.3yr. XAUUSD is present in both the
-local laptop cache and the VPS listing, but its exact history depth on
-the VPS hasn't been confirmed by an actual precompute run there yet --
-check the printed "~N years" line when it runs.
+~10.8yr, SPX500 ~10.1yr, GER40 ~10yr (1min/3min actually completed on
+the VPS before the disk-full incident; 5min not yet confirmed there),
+AAPL ~9.3yr. XAUUSD is present in both the local laptop cache and the
+VPS listing, but its exact history depth on the VPS hasn't been
+confirmed by an actual precompute run there yet -- check the printed
+"~N years" line when it runs.
 
 AAPL is NOT in this laptop's local cache -- its 1-min history lives in
 the VPS's Dukascopy cache instead (C:/Users/Administrator/RCTBE/data/
@@ -76,11 +81,16 @@ METAL_ASSETS = {"XAUUSD": "XAUUSD"}
 PLAUSIBLE_RANGE_METAL = {"XAUUSD": (800, 6000)}
 
 # ── Indices — identical mapping to MeanReversion's INDEX_ASSETS. ──
+# GER40 (DAX) added back 2026-09-19 per Tim -- confirmed ~10yr history
+# on both the local laptop cache and the VPS (partially precomputed
+# there already, before the disk-full incident -- see git history).
 INDEX_ASSETS = {
     "NDX100": "USATECHIDXUSD", "SPX500": "USA500IDXUSD", "US30": "USA30IDXUSD",
+    "GER40": "DEUIDXEUR",
 }
 PLAUSIBLE_RANGE_INDEX = {
     "NDX100": (5_000, 40_000), "SPX500": (1_500, 10_000), "US30": (10_000, 60_000),
+    "GER40": (5_000, 35_000),
 }
 
 # -- Stocks -- NOT in the local laptop cache; lives in the VPS's

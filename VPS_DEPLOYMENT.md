@@ -6,16 +6,26 @@ it's faster hardware, and this laptop's local Dukascopy cache doesn't
 have AAPL, which the VPS's cache does. This laptop was used only to
 build and validate the pipeline (see README.md's "Status" section).
 
-## Asset universe (narrowed 2026-09-19 per Tim)
+## Asset universe (narrowed 2026-09-19 per Tim, GER40 added back same day)
 
-Down from an earlier 18-asset universe to exactly 7: **EURUSD, GBPUSD,
-XAUUSD (gold), NDX100, SPX500, US30, AAPL**. `precompute.py`,
-`precompute_all.ps1`, and `start_search_4x.ps1` all reflect this list.
-If the VPS still has precomputed files or Dukascopy cache entries for
-the dropped assets (USDJPY, AUDUSD, NZDUSD, USDCAD, USDCHF, GER40,
-FRA40, UK100, JPN225, WMT, XOM, DIS), they're simply ignored now —
-harmless to leave in place, but see "Freeing disk space" below if
-space is tight.
+Down from an earlier 18-asset universe to 7, then GER40 (DAX) added
+back: **EURUSD, GBPUSD, XAUUSD (gold), NDX100, SPX500, US30, GER40
+(DAX), AAPL** — 8 total. GER40 was re-added specifically because the
+4-way parallel launcher's round-robin split left its 4th group with
+only NDX100 — `start_search_4x.ps1`'s `$allAssets` array puts GER40
+last on purpose so it lands in that same group (see that file's own
+comment). `precompute.py` and `precompute_all.ps1` all reflect this
+8-asset list. If the VPS still has precomputed files or Dukascopy cache
+entries for the other dropped assets (USDJPY, AUDUSD, NZDUSD, USDCAD,
+USDCHF, FRA40, UK100, JPN225, WMT, XOM, DIS), they're simply ignored
+now — harmless to leave in place, but see "Freeing disk space" below
+if space is tight.
+
+GER40 (folder `DEUIDXEUR` in the Dukascopy cache) actually already
+precomputed successfully on the VPS for 1min/3min before the original
+disk-full incident — only 5min failed. Re-running `precompute_all.ps1`
+will simply redo all three timeframes cleanly now that atomic writes +
+float32 downcasting are in place.
 
 ## First time setup
 
@@ -43,16 +53,16 @@ py -3 selftest.py           # cheap plumbing check — run this before trusting 
 The 2026-09-19 run ran out of disk partway through the old 18-asset
 sweep, which also left a few corrupted `.parquet` files behind (writes
 weren't atomic at the time — fixed now, see "Robustness fixes" below).
-Since only 7 assets matter going forward, delete the rest to reclaim
-space:
+Since only 8 assets matter going forward, delete the rest to reclaim
+space (note GER40 is NOT in this list -- it's back in scope):
 
 ```powershell
 Remove-Item ws_precomputed_USDJPY_*.parquet, ws_precomputed_AUDUSD_*.parquet, `
     ws_precomputed_NZDUSD_*.parquet, ws_precomputed_USDCAD_*.parquet, `
-    ws_precomputed_USDCHF_*.parquet, ws_precomputed_GER40_*.parquet, `
-    ws_precomputed_FRA40_*.parquet, ws_precomputed_UK100_*.parquet, `
-    ws_precomputed_JPN225_*.parquet, ws_precomputed_WMT_*.parquet, `
-    ws_precomputed_XOM_*.parquet, ws_precomputed_DIS_*.parquet `
+    ws_precomputed_USDCHF_*.parquet, ws_precomputed_FRA40_*.parquet, `
+    ws_precomputed_UK100_*.parquet, ws_precomputed_JPN225_*.parquet, `
+    ws_precomputed_WMT_*.parquet, ws_precomputed_XOM_*.parquet, `
+    ws_precomputed_DIS_*.parquet `
     -ErrorAction SilentlyContinue
 ```
 
@@ -86,7 +96,7 @@ truncated, permanently corrupt file there, which then crashed
 .\start_search_4x.ps1 -Groups 6 -Iterations 50000
 ```
 
-Splits the 7-asset universe round-robin across `$Groups` processes,
+Splits the 8-asset universe round-robin across `$Groups` processes,
 each with its own `WS_ASSETS`/`WS_OUTPUT_DIR` so they never collide on
 the same checkpoint/results files, at `BelowNormal` priority. Safe to
 disconnect the RDP session afterward (not log off — only a log-off or

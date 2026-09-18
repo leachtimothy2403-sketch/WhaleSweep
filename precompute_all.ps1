@@ -1,5 +1,7 @@
-﻿# WhaleSweep -- precompute the 7-asset universe (narrowed 2026-09-19 per
-# Tim): EURUSD, GBPUSD, XAUUSD, NDX100, SPX500, US30, AAPL.
+﻿# WhaleSweep -- precompute the 8-asset universe (narrowed to 7 on
+# 2026-09-19 per Tim, GER40/DAX added back same day so the 4-way
+# parallel launcher's 4th group isn't left with NDX100 alone):
+# EURUSD, GBPUSD, XAUUSD, NDX100, SPX500, US30, GER40, AAPL.
 # Run this once on the VPS before any search, and again if the shared
 # Dukascopy cache gets refreshed with new history.
 #
@@ -15,7 +17,7 @@
 $ErrorActionPreference = "Stop"
 
 $assets = @(
-    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL"
+    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40"
 )
 
 foreach ($a in $assets) {
