@@ -24,20 +24,22 @@ that don't drift against NY local time matter here in a way they didn't
 for MeanReversion's fixed intraday fair-value anchor. See README.md's
 "Assumptions" section.
 
-*** DATA DEPTH CAVEAT ***
-Per the shared Dukascopy cache (same one MeanReversion/RCTBE use):
-    EURUSD, GBPUSD, AUDUSD, NZDUSD, USDCAD, USDCHF,
-    NDX100, SPX500, US30, GER40, JPN225      ~10 years
-    USDJPY, FRA40, UK100                     ~3.3 years only (2023+)
-Treat any USDJPY/FRA40/UK100 result with that in mind, same caveat
-MeanReversion's own precompute.py applies to FRA40/UK100.
+*** ASSET UNIVERSE (narrowed 2026-09-19 per Tim) ***
+Only 7 assets: EURUSD, GBPUSD, XAUUSD (gold), NDX100, SPX500, US30, AAPL.
+A broader 18-asset universe (more forex majors + GER40/FRA40/UK100/
+JPN225 + WMT/XOM/DIS) was precomputed first -- see git history if
+that's ever worth reviving -- but this file now only defines the 7 in
+active use. Confirmed real history depth from the VPS's own
+precompute_all.ps1 run (2026-09-19): EURUSD/GBPUSD/US30 ~10.2yr, NDX100
+~10.8yr, SPX500 ~10.1yr, AAPL ~9.3yr. XAUUSD is present in both the
+local laptop cache and the VPS listing, but its exact history depth on
+the VPS hasn't been confirmed by an actual precompute run there yet --
+check the printed "~N years" line when it runs.
 
-Stock CFDs (AAPL, WMT, XOM) are NOT in this laptop's local cache — ~10yr
-1-min history for these lives in the VPS's Dukascopy cache instead
-(C:/Users/Administrator/RCTBE/data/dukascopy), confirmed 2026-09-19
-against Tim's own directory listing. That listing has no WBD (Discovery)
-folder — DIS (Disney, "DISUSUSD") is used in its place; see
-STOCK_ASSETS's own comment below.
+AAPL is NOT in this laptop's local cache -- its 1-min history lives in
+the VPS's Dukascopy cache instead (C:/Users/Administrator/RCTBE/data/
+dukascopy), confirmed 2026-09-19 against Tim's own directory listing
+(folder name "AAPLUSUSD").
 
 Usage:
     py -3 precompute.py <ASSET>          # all 3 entry timeframes
@@ -65,51 +67,33 @@ DUKASCOPY_CACHE_ROOT = Path(
 
 NY_TZ = "America/New_York"
 
-# ── Forex majors — Dukascopy folder name == asset name for all of these. ──
-FOREX_ASSETS = {
-    "EURUSD": "EURUSD", "GBPUSD": "GBPUSD", "USDJPY": "USDJPY",
-    "AUDUSD": "AUDUSD", "NZDUSD": "NZDUSD", "USDCAD": "USDCAD",
-    "USDCHF": "USDCHF",
-}
-PLAUSIBLE_RANGE_FOREX = {
-    "EURUSD": (0.7, 1.7), "GBPUSD": (0.9, 2.2), "USDJPY": (70, 200),
-    "AUDUSD": (0.4, 1.2), "NZDUSD": (0.4, 1.1), "USDCAD": (0.9, 1.7),
-    "USDCHF": (0.6, 1.3),
-}
+# ── Forex majors — Dukascopy folder name == asset name. ──
+FOREX_ASSETS = {"EURUSD": "EURUSD", "GBPUSD": "GBPUSD"}
+PLAUSIBLE_RANGE_FOREX = {"EURUSD": (0.7, 1.7), "GBPUSD": (0.9, 2.2)}
+
+# ── Metals — same naming convention as forex. ──
+METAL_ASSETS = {"XAUUSD": "XAUUSD"}
+PLAUSIBLE_RANGE_METAL = {"XAUUSD": (800, 6000)}
 
 # ── Indices — identical mapping to MeanReversion's INDEX_ASSETS. ──
 INDEX_ASSETS = {
     "NDX100": "USATECHIDXUSD", "SPX500": "USA500IDXUSD", "US30": "USA30IDXUSD",
-    "GER40": "DEUIDXEUR", "FRA40": "FRAIDXEUR", "UK100": "GBRIDXGBP",
-    "JPN225": "JPNIDXJPY",
 }
 PLAUSIBLE_RANGE_INDEX = {
     "NDX100": (5_000, 40_000), "SPX500": (1_500, 10_000), "US30": (10_000, 60_000),
-    "GER40": (5_000, 35_000), "FRA40": (3_000, 15_000), "UK100": (3_000, 15_000),
-    "JPN225": (10_000, 90_000),
 }
 
-# ── Stocks — NOT in the local laptop cache; live in the VPS's
+# -- Stocks -- NOT in the local laptop cache; lives in the VPS's
 # Dukascopy cache instead, confirmed 2026-09-19 against Tim's own
-# directory listing of C:\Users\Administrator\RCTBE\data\dukascopy
+# directory listing of C:/Users/Administrator/RCTBE/data/dukascopy
 # (folder names there have no dots/slashes, unlike the generic Dukascopy
-# CFD naming this file originally guessed — e.g. "AAPLUSUSD", not
-# "AAPL.US/USD"). NOTE: Tim asked for AAPL/WMT/XOM/WBD (Discovery), but
-# that VPS listing has no WBD folder — it has DISUSUSD (Disney) instead.
-# Using DIS here since that's what actually exists; swap back to a WBD
-# code if/when a WBD folder shows up in the cache.
-STOCK_ASSETS = {
-    "AAPL": "AAPLUSUSD",
-    "WMT":  "WMTUSUSD",
-    "XOM":  "XOMUSUSD",
-    "DIS":  "DISUSUSD",
-}
-PLAUSIBLE_RANGE_STOCK = {
-    "AAPL": (10, 500), "WMT": (10, 250), "XOM": (20, 250), "DIS": (30, 250),
-}
+# CFD naming this file originally guessed -- e.g. "AAPLUSUSD", not
+# "AAPL.US/USD").
+STOCK_ASSETS = {"AAPL": "AAPLUSUSD"}
+PLAUSIBLE_RANGE_STOCK = {"AAPL": (10, 500)}
 
-ALL_ASSETS = {**FOREX_ASSETS, **INDEX_ASSETS, **STOCK_ASSETS}
-ALL_RANGES = {**PLAUSIBLE_RANGE_FOREX, **PLAUSIBLE_RANGE_INDEX, **PLAUSIBLE_RANGE_STOCK}
+ALL_ASSETS = {**FOREX_ASSETS, **METAL_ASSETS, **INDEX_ASSETS, **STOCK_ASSETS}
+ALL_RANGES = {**PLAUSIBLE_RANGE_FOREX, **PLAUSIBLE_RANGE_METAL, **PLAUSIBLE_RANGE_INDEX, **PLAUSIBLE_RANGE_STOCK}
 
 DIVISOR_BREAK_LOG_THRESHOLD = np.log(5)
 
@@ -312,10 +296,33 @@ def precompute_asset(asset: str, timeframes: list[str] | None = None) -> None:
         bars["ny_minutes"] = ny_idx.hour * 60 + ny_idx.minute
 
         required = [f"atr_{w}" for w in ATR_WINDOWS] + ["pdh", "pdl"]
-        out = bars.dropna(subset=required)
+        out = bars.dropna(subset=required).copy()
+
+        # Downcast to float32 before saving -- roughly halves each file's
+        # footprint (price/indicator precision loss is negligible at
+        # forex/index/stock price scales). day_id stays a string,
+        # ny_minutes becomes int32; everything else numeric is float64
+        # by construction and safe to downcast.
+        float_cols = out.select_dtypes(include="float64").columns
+        out[float_cols] = out[float_cols].astype("float32")
+        out["ny_minutes"] = out["ny_minutes"].astype("int32")
+
         out_path = f"ws_precomputed_{asset}_{tf}.parquet"
-        out.to_parquet(out_path)
-        print(f"[{asset}][{tf}] saved {len(out):,} rows to {out_path}", flush=True)
+        tmp_path = out_path + ".tmp"
+        # Write-then-rename: a failure mid-write (e.g. disk full, ^C)
+        # leaves only a stray .tmp file, never a truncated file at the
+        # real path that later silently breaks selftest.py/whale_sweep.py
+        # with a cryptic "Parquet magic bytes not found" error -- this is
+        # exactly what happened on the VPS's first precompute_all.ps1 run
+        # when the disk filled up partway through (see git history).
+        try:
+            out.to_parquet(tmp_path)
+        except Exception:
+            Path(tmp_path).unlink(missing_ok=True)
+            raise
+        os.replace(tmp_path, out_path)
+        print(f"[{asset}][{tf}] saved {len(out):,} rows to {out_path} "
+              f"({Path(out_path).stat().st_size / 1e6:.1f} MB)", flush=True)
 
 
 def main() -> None:

@@ -69,15 +69,11 @@ established conventions this project reuses rather than reinvents).
    - `reversal_to_open` — the day's opening price (fair-value anchor).
    - `opposite_level` — the nearest liquidity level on the opposite side
      of price from entry.
-10. **Assets**: forex majors + the 7 index CFDs already cached locally via
-    Dukascopy (~10yr history on most — see `precompute.py`'s own
-    docstring for the couple of shorter-history exceptions), plus stock
-    CFDs (AAPL, WMT, XOM) whose ~10yr 1-min history lives in the VPS's
-    Dukascopy cache, not the local laptop's — see `VPS_DEPLOYMENT.md`.
-    Tim asked for WBD (Discovery) too, but the VPS's actual cache
-    (confirmed 2026-09-19) has no WBD folder — it has DISUSUSD (Disney)
-    instead, so DIS is used in WBD's place; flag if a WBD folder shows up
-    later and this should be swapped back.
+10. **Assets** (narrowed 2026-09-19 per Tim, down from an earlier
+    18-asset universe): EURUSD, GBPUSD, XAUUSD (gold), NDX100, SPX500,
+    US30, AAPL — 7 total. All but AAPL are cached locally on this
+    laptop; AAPL's ~9.3yr 1-min history lives only in the VPS's
+    Dukascopy cache — see `VPS_DEPLOYMENT.md`.
 11. **Target**: FTMO prop-firm rules (1-step trailing-10% and 2-step
     5%+10%-static challenges), reusing `ftmo_challenge_rules.py` verbatim
     from MeanReversion (same "duplicated, not imported" convention — see
@@ -121,20 +117,36 @@ stop on the actual price extreme reached between the sweep and the
 entry bar instead of the static level — see `_compute_sl`'s docstring
 in `whale_sweep.py`.
 
-A 100-iteration smoke search (3yr EURUSD+NDX100 only — NOT a real
+A 100-iteration smoke search (3yr EURUSD+NDX100 only -- NOT a real
 result) surfaced one candidate (NDX100, 1min, `reversal_cross_back`,
 `opposite_level` TP) with `min_profit_factor`=1.06 and 5/5 walk-forward
-periods passing — promising as a sign the mechanism can find something,
+periods passing -- promising as a sign the mechanism can find something,
 but on far too little data/breadth to mean anything on its own. It has
 **not** been run through the FTMO historical-replay gate yet.
 
-**Not yet done**: the real 10-year, 18-asset (7 forex + 7 indices + 4
-stocks) search — this needs the VPS, both for the compute and for the
-stock data this laptop's cache doesn't have. See `VPS_DEPLOYMENT.md`.
-Every serious candidate that search produces should go through
-`candidate_report.py`'s three gates (OOS holdout, parameter plateau,
-FTMO historical replay — trust the worst-24-month-window pass rate, not
-the average) before any real risk is sized against it.
+**Asset universe narrowed (2026-09-19)**: down from an earlier 18-asset
+plan to 7 -- EURUSD, GBPUSD, XAUUSD, NDX100, SPX500, US30, AAPL -- per
+Tim's request. `precompute.py`, `precompute_all.ps1`, and
+`start_search_4x.ps1` all reflect this.
+
+**VPS disk-full incident + fix (2026-09-19)**: the first full VPS
+precompute run (against the old 18-asset universe) ran out of disk
+partway through, and because `precompute.py` wrote each `.parquet`
+file directly to its final path, the failure left a few permanently
+corrupted files behind (`selftest.py` then crashed on
+`Parquet magic bytes not found in footer`). Fixed by writing to a
+`.tmp` file and `os.replace()`-ing it into place atomically, plus
+downcasting float64 columns to float32 before saving (~27% smaller
+files, e.g. EURUSD 1min 53.98MB -> 39.7MB). See `VPS_DEPLOYMENT.md`
+for the disk-cleanup + re-run steps.
+
+**Not yet done**: the real 10-year, 7-asset search -- this needs the
+VPS, both for the compute and for AAPL's data, which this laptop's
+cache doesn't have. See `VPS_DEPLOYMENT.md`. Every serious candidate
+that search produces should go through `candidate_report.py`'s three
+gates (OOS holdout, parameter plateau, FTMO historical replay -- trust
+the worst-24-month-window pass rate, not the average) before any real
+risk is sized against it.
 
 Results and any rule changes get logged here as dated update notes,
 same convention as MeanReversion's own README.

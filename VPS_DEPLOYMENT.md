@@ -1,12 +1,21 @@
 # Running WhaleSweep on the VPS
 
-The full 10-year, multi-asset (forex + indices + stocks) parameter
-search is meant to run on the VPS, not this laptop — same reasoning as
-`../MeanReversion/VPS_DEPLOYMENT.md`: it's faster hardware, and this
-laptop's local Dukascopy cache doesn't have the stock CFDs (AAPL/WMT/
-XOM/WBD) that the VPS's cache does. This laptop was used only to build
-and validate the pipeline (see README.md's "Status" section) on a 3-year
-forex + index subset.
+The full 10-year, multi-asset parameter search is meant to run on the
+VPS, not this laptop — same reasoning as `../MeanReversion/VPS_DEPLOYMENT.md`:
+it's faster hardware, and this laptop's local Dukascopy cache doesn't
+have AAPL, which the VPS's cache does. This laptop was used only to
+build and validate the pipeline (see README.md's "Status" section).
+
+## Asset universe (narrowed 2026-09-19 per Tim)
+
+Down from an earlier 18-asset universe to exactly 7: **EURUSD, GBPUSD,
+XAUUSD (gold), NDX100, SPX500, US30, AAPL**. `precompute.py`,
+`precompute_all.ps1`, and `start_search_4x.ps1` all reflect this list.
+If the VPS still has precomputed files or Dukascopy cache entries for
+the dropped assets (USDJPY, AUDUSD, NZDUSD, USDCAD, USDCHF, GER40,
+FRA40, UK100, JPN225, WMT, XOM, DIS), they're simply ignored now —
+harmless to leave in place, but see "Freeing disk space" below if
+space is tight.
 
 ## First time setup
 
@@ -20,18 +29,55 @@ py -3 -m pip install --quiet numpy pandas pyarrow
 # own directory listing:
 $env:WS_DUKASCOPY_ROOT = "C:\Users\Administrator\RCTBE\data\dukascopy"
 
-.\precompute_all.ps1        # precomputes all 18 assets x 3 timeframes
+.\precompute_all.ps1        # precomputes all 7 assets x 3 timeframes
 py -3 selftest.py           # cheap plumbing check — run this before trusting a long search
 ```
 
-**Stock codes**: `precompute.py`'s `STOCK_ASSETS` dict
-(`AAPLUSUSD`/`WMTUSUSD`/`XOMUSUSD`/`DISUSUSD`) matches the VPS cache's
-real folder names, confirmed against Tim's own directory listing
-2026-09-19. One substitution worth knowing about: Tim asked for WBD
-(Discovery), but that listing has no WBD folder — DIS (Disney) is used
-in its place. If a WBD folder ever shows up in the cache, swap it back
-in (README.md flags this too). `precompute_all.ps1` will warn (not
-crash) on any asset it can't find.
+**Stock codes**: `precompute.py`'s `STOCK_ASSETS` dict now has just
+`AAPL` -> `AAPLUSUSD`, matching the VPS cache's real folder name
+(confirmed against Tim's own directory listing 2026-09-19).
+`precompute_all.ps1` will warn (not crash) on any asset it can't find.
+
+## Freeing disk space (if you hit "No space left on device" again)
+
+The 2026-09-19 run ran out of disk partway through the old 18-asset
+sweep, which also left a few corrupted `.parquet` files behind (writes
+weren't atomic at the time — fixed now, see "Robustness fixes" below).
+Since only 7 assets matter going forward, delete the rest to reclaim
+space:
+
+```powershell
+Remove-Item ws_precomputed_USDJPY_*.parquet, ws_precomputed_AUDUSD_*.parquet, `
+    ws_precomputed_NZDUSD_*.parquet, ws_precomputed_USDCAD_*.parquet, `
+    ws_precomputed_USDCHF_*.parquet, ws_precomputed_GER40_*.parquet, `
+    ws_precomputed_FRA40_*.parquet, ws_precomputed_UK100_*.parquet, `
+    ws_precomputed_JPN225_*.parquet, ws_precomputed_WMT_*.parquet, `
+    ws_precomputed_XOM_*.parquet, ws_precomputed_DIS_*.parquet `
+    -ErrorAction SilentlyContinue
+```
+
+This also clears out any partially-written/corrupt files from the
+disk-full incident (they'll be for the dropped assets anyway). If
+`selftest.py` still errors on a `Parquet magic bytes not found in
+footer` for one of the 7 kept assets, delete just that asset's `.tmp`
+or `.parquet` file and re-run `precompute_all.ps1` — the pipeline now
+writes atomically (see below) so a fresh run won't leave another
+corrupt file even if disk fills up again.
+
+## Robustness fixes (2026-09-19)
+
+`precompute.py` used to write each `ws_precomputed_*.parquet` file
+directly to its final path. A disk-full error mid-write left a
+truncated, permanently corrupt file there, which then crashed
+`selftest.py` on read. Fixed by:
+
+- Writing to a `.tmp` file first, then `os.replace()`-ing it into place
+  atomically — a failed write now leaves no file at the final path
+  instead of a corrupt one.
+- Downcasting OHLC/indicator float64 columns to float32 before saving,
+  which also shrinks each file by roughly 27% (tested: EURUSD 1min
+  53.98MB -> 39.7MB), reducing the odds of hitting the disk limit at
+  all.
 
 ## Running the search
 
@@ -40,7 +86,7 @@ crash) on any asset it can't find.
 .\start_search_4x.ps1 -Groups 6 -Iterations 50000
 ```
 
-Splits the 18-asset universe round-robin across `$Groups` processes,
+Splits the 7-asset universe round-robin across `$Groups` processes,
 each with its own `WS_ASSETS`/`WS_OUTPUT_DIR` so they never collide on
 the same checkpoint/results files, at `BelowNormal` priority. Safe to
 disconnect the RDP session afterward (not log off — only a log-off or
