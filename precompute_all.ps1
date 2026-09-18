@@ -2,11 +2,13 @@
 # Run this once on the VPS before any search, and again if the shared
 # Dukascopy cache gets refreshed with new history.
 #
-# Point $env:WS_DUKASCOPY_ROOT at the VPS's actual Dukascopy cache first
-# if it differs from the default (see precompute.py's docstring) — in
-# particular, confirm the STOCK_ASSETS Dukascopy codes in precompute.py
-# (AAPL.US/USD etc.) match that cache's real folder names for
-# AAPL/WMT/XOM/WBD before relying on the stock legs of the sweep.
+# Point $env:WS_DUKASCOPY_ROOT at the VPS's Dukascopy cache first, e.g.:
+#   $env:WS_DUKASCOPY_ROOT = "C:\Users\Administrator\RCTBE\data\dukascopy"
+# (confirmed 2026-09-19 against Tim's own directory listing — the stock
+# codes in precompute.py's STOCK_ASSETS, AAPLUSUSD/WMTUSUSD/XOMUSUSD/
+# DISUSUSD, match that listing's real folder names). Note: Tim asked for
+# WBD (Discovery) but that listing has no WBD folder, only DISUSUSD
+# (Disney) — DIS is used in its place, see precompute.py's own comment.
 #
 # Usage:
 #   .\precompute_all.ps1
@@ -16,7 +18,7 @@ $ErrorActionPreference = "Stop"
 $assets = @(
     "EURUSD","GBPUSD","USDJPY","AUDUSD","NZDUSD","USDCAD","USDCHF",
     "NDX100","SPX500","US30","GER40","FRA40","UK100","JPN225",
-    "AAPL","WMT","XOM","WBD"
+    "AAPL","WMT","XOM","DIS"
 )
 
 foreach ($a in $assets) {

@@ -72,9 +72,12 @@ established conventions this project reuses rather than reinvents).
 10. **Assets**: forex majors + the 7 index CFDs already cached locally via
     Dukascopy (~10yr history on most — see `precompute.py`'s own
     docstring for the couple of shorter-history exceptions), plus stock
-    CFDs (AAPL, WMT, XOM, WBD/Discovery per Tim) whose ~10yr 1-min history
-    lives in the VPS's Dukascopy cache, not the local laptop's — see
-    "Running the full sweep on the VPS" below.
+    CFDs (AAPL, WMT, XOM) whose ~10yr 1-min history lives in the VPS's
+    Dukascopy cache, not the local laptop's — see `VPS_DEPLOYMENT.md`.
+    Tim asked for WBD (Discovery) too, but the VPS's actual cache
+    (confirmed 2026-09-19) has no WBD folder — it has DISUSUSD (Disney)
+    instead, so DIS is used in WBD's place; flag if a WBD folder shows up
+    later and this should be swapped back.
 11. **Target**: FTMO prop-firm rules (1-step trailing-10% and 2-step
     5%+10%-static challenges), reusing `ftmo_challenge_rules.py` verbatim
     from MeanReversion (same "duplicated, not imported" convention — see

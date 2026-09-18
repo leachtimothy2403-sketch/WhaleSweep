@@ -29,7 +29,7 @@ $ErrorActionPreference = "Stop"
 $allAssets = @(
     "EURUSD","GBPUSD","USDJPY","AUDUSD","NZDUSD","USDCAD","USDCHF",
     "NDX100","SPX500","US30","GER40","FRA40","UK100","JPN225",
-    "AAPL","WMT","XOM","WBD"
+    "AAPL","WMT","XOM","DIS"
 )
 
 # Only search assets that actually precomputed successfully.

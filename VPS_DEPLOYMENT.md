@@ -16,18 +16,21 @@ cd WhaleSweep
 py -3 -m pip install --quiet numpy pandas pyarrow
 
 # Point at the VPS's Dukascopy cache (same env var convention as
-# MeanReversion's MR_DUKASCOPY_ROOT):
-$env:WS_DUKASCOPY_ROOT = "C:\path\to\existing\data\dukascopy"
+# MeanReversion's MR_DUKASCOPY_ROOT). Confirmed 2026-09-19 against Tim's
+# own directory listing:
+$env:WS_DUKASCOPY_ROOT = "C:\Users\Administrator\RCTBE\data\dukascopy"
 
 .\precompute_all.ps1        # precomputes all 18 assets x 3 timeframes
 py -3 selftest.py           # cheap plumbing check — run this before trusting a long search
 ```
 
-**Before trusting the stock legs of the search**, confirm the Dukascopy
-CFD codes in `precompute.py`'s `STOCK_ASSETS` dict (`AAPL.US/USD` etc.)
-actually match the VPS cache's real folder names for AAPL/WMT/XOM/WBD —
-these were never verified against real VPS data from this laptop (see
-`precompute.py`'s own docstring). `precompute_all.ps1` will warn (not
+**Stock codes**: `precompute.py`'s `STOCK_ASSETS` dict
+(`AAPLUSUSD`/`WMTUSUSD`/`XOMUSUSD`/`DISUSUSD`) matches the VPS cache's
+real folder names, confirmed against Tim's own directory listing
+2026-09-19. One substitution worth knowing about: Tim asked for WBD
+(Discovery), but that listing has no WBD folder — DIS (Disney) is used
+in its place. If a WBD folder ever shows up in the cache, swap it back
+in (README.md flags this too). `precompute_all.ps1` will warn (not
 crash) on any asset it can't find.
 
 ## Running the search

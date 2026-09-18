@@ -32,12 +32,12 @@ Per the shared Dukascopy cache (same one MeanReversion/RCTBE use):
 Treat any USDJPY/FRA40/UK100 result with that in mind, same caveat
 MeanReversion's own precompute.py applies to FRA40/UK100.
 
-Stock CFDs (AAPL, WMT, XOM, WBD) are NOT in this laptop's local cache —
-Tim confirmed ~10yr 1-min history for these lives in the VPS's
-Dukascopy cache instead. STOCK_ASSETS below has placeholder Dukascopy
-codes (standard Dukascopy equity-CFD naming, e.g. "AAPL.US/USD") that
-have NOT been verified against the actual VPS folder names — confirm/
-correct them there before running (see VPS_DEPLOYMENT.md).
+Stock CFDs (AAPL, WMT, XOM) are NOT in this laptop's local cache — ~10yr
+1-min history for these lives in the VPS's Dukascopy cache instead
+(C:/Users/Administrator/RCTBE/data/dukascopy), confirmed 2026-09-19
+against Tim's own directory listing. That listing has no WBD (Discovery)
+folder — DIS (Disney, "DISUSUSD") is used in its place; see
+STOCK_ASSETS's own comment below.
 
 Usage:
     py -3 precompute.py <ASSET>          # all 3 entry timeframes
@@ -89,17 +89,23 @@ PLAUSIBLE_RANGE_INDEX = {
     "JPN225": (10_000, 90_000),
 }
 
-# ── Stocks — NOT in the local cache. Placeholder Dukascopy CFD codes,
-# verify/correct against the VPS's actual dukascopy/ folder names before
-# running there (see this file's docstring + VPS_DEPLOYMENT.md). ──
+# ── Stocks — NOT in the local laptop cache; live in the VPS's
+# Dukascopy cache instead, confirmed 2026-09-19 against Tim's own
+# directory listing of C:\Users\Administrator\RCTBE\data\dukascopy
+# (folder names there have no dots/slashes, unlike the generic Dukascopy
+# CFD naming this file originally guessed — e.g. "AAPLUSUSD", not
+# "AAPL.US/USD"). NOTE: Tim asked for AAPL/WMT/XOM/WBD (Discovery), but
+# that VPS listing has no WBD folder — it has DISUSUSD (Disney) instead.
+# Using DIS here since that's what actually exists; swap back to a WBD
+# code if/when a WBD folder shows up in the cache.
 STOCK_ASSETS = {
-    "AAPL": "AAPL.US/USD",
-    "WMT":  "WMT.US/USD",
-    "XOM":  "XOM.US/USD",
-    "WBD":  "WBD.US/USD",
+    "AAPL": "AAPLUSUSD",
+    "WMT":  "WMTUSUSD",
+    "XOM":  "XOMUSUSD",
+    "DIS":  "DISUSUSD",
 }
 PLAUSIBLE_RANGE_STOCK = {
-    "AAPL": (10, 500), "WMT": (10, 250), "XOM": (20, 250), "WBD": (2, 60),
+    "AAPL": (10, 500), "WMT": (10, 250), "XOM": (20, 250), "DIS": (30, 250),
 }
 
 ALL_ASSETS = {**FOREX_ASSETS, **INDEX_ASSETS, **STOCK_ASSETS}
