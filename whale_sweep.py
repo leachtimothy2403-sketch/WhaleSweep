@@ -18,9 +18,29 @@ already familiar with that one.
 Requires precompute.py to have already produced
 `ws_precomputed_<ASSET>_<TF>.parquet` files in this directory.
 
+VALIDATION STANDARD (added 2026-09-18, matching MeanReversion's own bar):
+  5-period walk-forward split (N_PERIODS=5). WS_IS_ONLY=1 (default ON)
+  truncates every (asset, timeframe) to periods 1-3 (the first 60% of
+  history) before the SEARCH's own accept/scoring gate ever sees it --
+  same fix as RCTBE_L2_IS_ONLY / MR_IS_ONLY. Without it, a candidate can
+  scrape into top_strategies.json partly because it looked good on
+  periods 4-5 -- the SAME bars gate2_holdout.py later calls a "blind OOS
+  holdout" -- which isn't a genuinely blind test at that point, just a
+  re-score of bars the search already used to select candidates (this
+  was WhaleSweep's actual behavior before this fix -- see git history
+  and gate2_holdout.py's now-updated docstring). With WS_IS_ONLY=1, the
+  search only ever sees periods 1-3; gate2_holdout.py/plateau_check.py/
+  candidate_report.py all load the FULL untruncated file directly via
+  load_precomputed() (untouched by this flag -- see _search_view()),
+  so periods 4-5 are genuinely blind to everything the search did.
+  Set WS_IS_ONLY=0 only to deliberately reproduce the old (leakier)
+  behavior for comparison.
+
 Usage:
     py -3 whale_sweep.py                 # random search, WS_ITERATIONS (default 20000)
     WS_ITERATIONS=500 py -3 whale_sweep.py
+Env vars: WS_OUTPUT_DIR, WS_ITERATIONS, WS_ASSETS, WS_IS_ONLY (default "1"),
+WS_CHECKPOINT_EVERY, WS_DUKASCOPY_ROOT.
 """
 from __future__ import annotations
 
@@ -116,12 +136,41 @@ def discover_asset_timeframes() -> List[tuple[str, str]]:
 
 
 def load_precomputed(asset: str, tf: str) -> pd.DataFrame:
+    """Always returns the FULL, untruncated precomputed file, cached by
+    (asset, tf). Deliberately untouched by WS_IS_ONLY -- gate2_holdout.py,
+    plateau_check.py, and candidate_report.py all call this directly and
+    need the real periods 4-5 to do a genuinely blind OOS check. See
+    _search_view() for the IS-only slice the search loop itself uses."""
     key = (asset, tf)
     if key not in _DF_CACHE:
         path = f"ws_precomputed_{asset}_{tf}.parquet"
         df = pd.read_parquet(path)
         _DF_CACHE[key] = df
     return _DF_CACHE[key]
+
+
+# Blind-search selection fix -- see module docstring's VALIDATION STANDARD
+# section. Mirrors MeanReversion's MR_IS_ONLY (default "1" there too).
+IS_ONLY_SEARCH = os.environ.get("WS_IS_ONLY", "1").lower() in ("1", "true", "yes")
+
+_SEARCH_VIEW_CACHE: dict[tuple[str, str], pd.DataFrame] = {}
+
+
+def _search_view(asset: str, tf: str) -> pd.DataFrame:
+    """What the SEARCH loop backtests against: the full precomputed file,
+    truncated to periods 1-3 (first 60% of history) when WS_IS_ONLY is on.
+    Never used by gate2_holdout.py/plateau_check.py/candidate_report.py --
+    they call load_precomputed() directly to get the untruncated file."""
+    key = (asset, tf)
+    if key in _SEARCH_VIEW_CACHE:
+        return _SEARCH_VIEW_CACHE[key]
+    df = load_precomputed(asset, tf)
+    if IS_ONLY_SEARCH:
+        n = len(df)
+        bounds = np.linspace(0, n, N_PERIODS + 1).astype(int)
+        df = df.iloc[bounds[0]:bounds[3]]
+    _SEARCH_VIEW_CACHE[key] = df
+    return df
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -495,6 +544,8 @@ def main() -> None:
     if not assets:
         raise SystemExit("No ws_precomputed_*.parquet files found — run precompute.py first.")
     _log(f"Assets available: {assets}")
+    _log(f"WS_IS_ONLY={'ON' if IS_ONLY_SEARCH else 'OFF'} — "
+         f"{'every (asset, tf) truncated to periods 1-3 before the search sees it (genuinely blind Gate 2)' if IS_ONLY_SEARCH else 'search sees full history — Gate 2 later re-scores bars the accept gate already used, NOT a clean blind test'}")
 
     n_iterations = int(os.environ.get("WS_ITERATIONS", "20000"))
     checkpoint_every = int(os.environ.get("WS_CHECKPOINT_EVERY", "200"))
@@ -515,7 +566,7 @@ def main() -> None:
         if not path.exists():
             continue
         try:
-            df = load_precomputed(asset, tf)
+            df = _search_view(asset, tf)
             result = backtest_multiperiod(df, p)
         except Exception as e:   # a bad param combo should never kill an unattended multi-hour run
             _log(f"iter {it} asset={asset} tf={tf} ERROR: {e}")

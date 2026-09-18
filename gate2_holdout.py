@@ -8,11 +8,15 @@ OOS = periods 4-5 combined (last 40%). A candidate PASSES iff, on the
 OOS block: PF_OOS >= 1.05, n_trades_OOS >= 30, and degradation_ratio =
 (PF_OOS - 1) / (PF_IS - 1) >= 0.40.
 
-This is a re-score of the SAME bars the random search already saw (the
-search's own accept gate used all 5 periods, unlike MeanReversion's
-MR_IS_ONLY-gated search) — so unlike MeanReversion's genuinely-blind
-version, treat this as a consistency re-check, not a clean blind test,
-until/unless WhaleSweep's search loop grows an IS-only search mode too.
+Reads the FULL untruncated file via ws.load_precomputed() (never the
+search's own IS-only view, ws._search_view() -- see that function's
+docstring). Genuinely blind ONLY if the candidate came from a search run
+with WS_IS_ONLY=1 (whale_sweep.py's default since 2026-09-18) -- if a
+candidate was produced with WS_IS_ONLY=0, periods 4-5 were already
+visible to the search's own accept gate, and this becomes a re-score of
+bars already used to select it, not a clean blind test. Same caveat,
+same fix, as RCTBE's own `_layer2_gate2_holdout.py` and MeanReversion's
+`gate2_holdout.py`, both of which this is ported from.
 
 Usage:
     py -3 gate2_holdout.py --asset NDX100 --tf 5min
