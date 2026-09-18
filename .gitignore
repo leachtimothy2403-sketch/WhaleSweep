@@ -1,0 +1,32 @@
+# Precomputed data cache — fast to regenerate (py -3 precompute_all.ps1),
+# not worth versioning, EXCEPT deliberately committing them back from
+# the VPS after a real run so results are reproducible without re-
+# fetching the whole Dukascopy cache — see VPS_DEPLOYMENT.md's "Sending
+# results back" section for when to override this with `git add -f`.
+ws_precomputed_*.parquet
+
+# Search working state — regenerable from a resumed/rerun search.
+# top_strategies.json is the one file worth committing deliberately,
+# same convention as MeanReversion's own .gitignore.
+whale_sweep_output*/run.log
+whale_sweep_output*/checkpoint.json
+whale_sweep_output*/checkpoint.json.tmp
+whale_sweep_output*/DONE
+whale_sweep_output*/results.csv
+whale_sweep_output_local_smoketest/
+
+# VPS parallel-launcher per-process console logs
+run*_console.log
+run*_console.log.err
+
+# Raw/consolidated market data staged for ad-hoc diagnostics.
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
