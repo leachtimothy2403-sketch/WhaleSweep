@@ -18,6 +18,10 @@ whale_sweep_output_local_smoketest/
 # merge_search_results.py's comparison-only output -- regenerate, don't commit.
 whale_sweep_output*/top_strategies.json.old_global.json
 
+# screen_all_candidates.py's report -- regenerable from top_strategies.json
+# in seconds, not worth versioning.
+whale_sweep_output*/candidate_screen.csv
+
 # VPS parallel-launcher per-process console logs
 run*_console.log
 run*_console.log.err

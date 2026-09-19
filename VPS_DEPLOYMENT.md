@@ -153,24 +153,47 @@ going forward.
 ## After the search — vetting a candidate before trusting it
 
 A high `score` in `top_strategies.json` is a search-time filter, not a
-verdict — run every serious candidate through all three gates before
-sizing any real risk against it (same discipline MeanReversion applies
-via its own `gate2_holdout.py`/`plateau_check.py`/`candidate_report.py`):
+verdict — confirmed directly on the first real merged run (2026-09-19):
+NDX100/5min's top 3 by score, checked individually, came back FAIL /
+FAIL / FAIL on Gate 2, with worst-24-month-window pass rates of
+"not enough history" / 85.7% / 39.0% — in DECREASING score order but
+NOT decreasing real-world order. This is the identical failure RCTBE
+found in Layer 2 (`RCTBE_L2_PROPFIRM_RANK`'s own comment: "score
+doesn't reliably predict real portfolio value").
+
+**Don't just check the top-ranked candidate per (asset, tf) — screen
+all of them:**
+
+```powershell
+py -3 screen_all_candidates.py
+```
+
+Runs the full three-gate check (`gate2_holdout.py`, `plateau_check.py`,
+the real historical-cohort FTMO replay) against EVERY candidate in the
+merged `top_strategies.json`, not just the top few, and prints/writes a
+table sorted by Gate 2 verdict then worst-24-month-window pass rate —
+NOT by search score. Takes a few minutes per candidate's plateau check
+(each perturbs ~15-27 neighbors, each a full walk-forward backtest), so
+budget roughly `n_candidates x 10-30s` for the whole merged pool (162
+candidates after the first real run -> expect 20-60 minutes; narrow
+with `--asset`/`--tf` to check just one pair sooner). Writes
+`whale_sweep_output\candidate_screen.csv` with full detail (including
+`fail_reasons`) for every candidate checked.
+
+Once this table points at something worth a closer look, get its full
+parameter set with `candidate_report.py`, using the table's own
+`local_rank` column:
 
 ```powershell
 py -3 candidate_report.py --asset NDX100 --tf 5min --rank 0 1 2
 ```
 
-This runs, in order: the OOS-holdout re-check (`gate2_holdout.py`), the
-parameter-plateau check (`plateau_check.py`), and a real-historical-
-replay FTMO check (every-Monday cohort replay through
-`ftmo_challenge_rules.py`, reporting both the overall pass rate and the
-rolling-worst-24-month-window pass rate — trust the worst-window number,
-not the average, per that file's own docstring). Run this for every
-(asset, tf) pair that has real candidates in the merged file, not just
-whichever one happens to be ranked #1 overall — the per-key floor above
-exists precisely so a lower-global-score-but-still-real candidate on
-another asset doesn't get skipped just because it wasn't in the top 5.
+This runs the same three checks on one (asset, tf) pair's own top few
+ranks (by score, not by the re-ranked order `screen_all_candidates.py`
+uses) and prints full detail per candidate, including its complete
+parameter dict — useful for a quick individual check, but
+`screen_all_candidates.py` is what actually answers "which of these 200
+candidates is worth trusting", since score order isn't it.
 
 ## Sending results back
 
