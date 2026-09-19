@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-WhaleSweep -- bucket already-screened candidates by worst-24-month-window
+WhaleSweep -- bucket already-screened candidates by worst-window
 pass-rate tiers (2026-09-19, per Tim: "lets consider 30%, 50% and 70%").
 
 This does NOT re-run gate2_holdout / plateau_check / historical_replay_check
@@ -72,7 +72,7 @@ def main():
     if args.gate2_pass_only:
         filt_note.append("Gate 2 PASS")
     filt_str = f" ({', '.join(filt_note)})" if filt_note else ""
-    print(f"{total} candidates in {args.csv}; {len(usable)} have a computable worst-24-month-window "
+    print(f"{total} candidates in {args.csv}; {len(usable)} have a computable worst-window "
           f"pass rate{filt_str}.\n")
 
     for t in tiers:

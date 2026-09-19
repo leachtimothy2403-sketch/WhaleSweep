@@ -9,7 +9,7 @@ from ../MeanReversion/candidate_report.py, same three-gate structure:
      historical trade sequence starting on every calendar Monday
      spanning its trade history, using the real 1-step challenge rules
      (ftmo_challenge_rules.simulate_1step). Reports BOTH the overall
-     pass rate (average-case) and the rolling WORST 24-month-window pass
+     pass rate (average-case) and the rolling WORST N-month-window pass
      rate — see ftmo_challenge_rules.py's own docstring for why the
      worst-window number, not the average, is the one worth trusting.
      Same caveats as MeanReversion's version: not a day-block-bootstrap
@@ -160,10 +160,10 @@ def main():
             wwn = replay.get("worst_window_n")
             confidence = ("" if wwp is None else
                           "  [THIN SAMPLE -- weight cautiously]" if wwn is not None and wwn < 30 else "")
-            print(f"    WORST 24-MONTH WINDOW pass={wwp}%" +
+            print(f"    WORST {int(ftmo.ROLLING_WINDOW_MONTHS)}-MONTH WINDOW pass={wwp}%" +
                   (f" (starting {replay['worst_window_start']}, {wwn} resolved cohorts in that window)"
                    if wwp is not None else
-                   "  — not enough history yet for a 24-month window with >=8 resolved cohorts") +
+                   f"  — not enough history yet for a {int(ftmo.ROLLING_WINDOW_MONTHS)}-month window with >=8 resolved cohorts") +
                   confidence +
                   "  <-- this, not the overall average above, is the number worth trusting")
         print()

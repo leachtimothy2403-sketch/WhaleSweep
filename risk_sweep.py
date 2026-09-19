@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 WhaleSweep -- sweep candidate_report.py's --risk-pct across multiple
-levels and see how the worst-24-month-window pass rate moves (2026-09-19,
+levels and see how the worst-window pass rate moves (2026-09-19,
 per Tim: "try to vary the 0.75% risk, and see what the picture looks
 like").
 

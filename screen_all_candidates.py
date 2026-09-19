@@ -25,7 +25,7 @@ ex-post equivalent: it runs the SAME three checks candidate_report.py
 already does (gate2_holdout, plateau_check, real historical-cohort FTMO
 replay) against EVERY candidate already sitting in the merged
 top_strategies.json - not just rank 0-2 per (asset, tf) - and reports
-them sorted by worst-24-month-window pass rate (the number
+them sorted by worst-window pass rate (the number
 candidate_report.py's own docstring says is the one worth trusting),
 not by score.
 
@@ -37,7 +37,7 @@ is exactly the --rank value to pass it.
 
 2026-09-19 addendum: the first real run of this script surfaced a
 second, related problem — many DIFFERENT candidates across DIFFERENT
-assets shared the exact same worst_window_pass_pct (85.7%, repeatedly).
+assets shared the exact same worst_window_pass_pct (85.7%, repeatedly, back when the window was 24 months).
 85.7% = 12/14, and 14 is the smallest cohort count the >=8-cohort
 minimum allows to round to that figure — meaning several of those
 "good-looking" worst-window numbers rested on as few as ~14 resolved
@@ -137,7 +137,7 @@ def main():
             print(f"  screened {i + 1}/{len(targets)} ({time.time() - t0:.0f}s elapsed)")
 
     # Rank by real-world worthiness, not score: Gate 2 PASS first, then by
-    # worst-24-month-window pass rate. A candidate with no computable
+    # worst-window pass rate. A candidate with no computable
     # worst-window yet (insufficient history) sorts BELOW any candidate
     # with a real, computed number — proven-good beats unproven, and
     # unproven still beats proven-bad (a low real worst-window number).
@@ -178,7 +178,7 @@ def main():
                         and r["worst_window_n"] is not None and r["worst_window_n"] >= 30)
     print(f"\n{n_gate2_pass}/{len(results)} pass Gate 2 (OOS holdout). "
           f"{n_both_pass}/{len(results)} pass BOTH Gate 2 and the plateau check. "
-          f"{n_real_wwp}/{len(results)} have SOME worst-24-month-window number, but only "
+          f"{n_real_wwp}/{len(results)} have SOME worst-window number, but only "
           f"{n_robust_wwp}/{len(results)} rest on >=30 resolved cohorts (a `*` in the table above "
           f"marks a thin one -- treat those percentages as unproven, not as evidence either way).")
     print("A Gate 2 FAIL doesn't make a candidate automatically worthless (the search's own accept "
