@@ -64,16 +64,29 @@ py`'s original historical-replay check: an AVERAGE pass rate across all
 weekly cohorts can look strong while hiding a cluster of failures
 concentrated in one bad stretch (a COVID-2020-style regime) — exactly
 the failure mode RCTBE's own real risk-selection standard uses a
-rolling WORST 24-month window to catch instead of trusting an average
+rolling WORST N-month window (ROLLING_WINDOW_MONTHS) to catch instead of trusting an average
 (see RCTBE_SYSTEM_BRIEFING.md Section 9's "month-by-month breakdown
 swung wildly... no consistent safe stretch" finding, which an average
 alone would have hidden). `candidate_report.py` now reports both,
 clearly labeled — never mistake the average for the worst-window number.
 """
+import os
+
 import pandas as pd
 
 START_EQUITY = 100_000.0
-ROLLING_WINDOW_MONTHS = 24   # matches RCTBE's own default
+# 2026-09-19: WhaleSweep's own total history is now truncated to ~2 years
+# (see whale_sweep.HISTORY_YEARS) rather than the ~10 years RCTBE's own
+# 24-month default assumed -- a 24-month-WIDE window over a 24-month-TOTAL
+# history is exactly one window, so "worst" becomes meaningless (nothing
+# to compare it against). Shrunk to 12 months (half the new total) so
+# there's still real room to slide the window and find a genuine worst
+# stretch (~52 weekly-anchored positions across the remaining 12 months
+# of slide room, vs the old design's ~52 across 10 years of slide room --
+# same idea, rescaled to the new total). Revisit this if WS_HISTORY_YEARS
+# changes -- the two are independent env vars, not auto-derived from each
+# other, so a config change to one doesn't silently break the other.
+ROLLING_WINDOW_MONTHS = float(os.environ.get("WS_ROLLING_WINDOW_MONTHS", "12"))
 
 
 def walk_days(by_date, all_days, start):
@@ -118,7 +131,7 @@ def rolling_worst_window_pass_rate(mondays, outcomes, window_months=ROLLING_WIND
     told the caller whether a reported worst-window rate rested on 14
     resolved cohorts (~3 months of genuinely resolved outcomes,
     dominated by noise) or 100+ (a real multi-year stress read). A
-    24-month-WIDE window can still contain very few RESOLVED cohorts if
+    wide window can still contain very few RESOLVED cohorts if
     that candidate simply doesn't fire many complete challenge attempts
     during that stretch — the window's calendar width alone doesn't
     guarantee sample size. Callers should treat a passing worst-window
