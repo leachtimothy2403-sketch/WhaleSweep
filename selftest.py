@@ -39,6 +39,10 @@ def check_signal_invariants(asset: str, tf: str) -> None:
     df = ws.load_precomputed(asset, tf)
     base = dict(
         entry_timeframe=tf, atr_window=14, include_secondary_levels=True,
+        # 2026-09-19: exercise both new toggles (not just default them away)
+        # so this selftest actually covers the re-arm state machine and the
+        # new session-level lookup, not just the pre-existing PDH/PDL path.
+        allow_level_rearm=True, include_session_levels=True,
         close_beyond_lookback_bars=3, wick_atr_mult=1.0, reversal_lookback_bars=5,
         reversal_requires_close=True, bos_lookback_bars=8, bos_mode="fractal", bos_confirm_atr_mult=0.1,
         require_rsi_confirm=False, rsi_period=14, rsi_mode="overbought_oversold", rsi_ob=70, rsi_os=30,
