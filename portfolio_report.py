@@ -70,6 +70,20 @@ def build_trades(row, risk_pct):
     return trades, df.index[0], df.index[-1]
 
 
+def _raw_parquet_range(asset, tf):
+    """The precomputed parquet's OWN full date range, read directly and
+    bypassing load_precomputed()'s HISTORY_YEARS truncation entirely --
+    lets us tell "truncated by the env var" apart from "that's genuinely
+    all the history there is" regardless of whether WS_HISTORY_YEARS
+    actually took effect in this shell."""
+    import os
+    path = f"ws_precomputed_{asset}_{tf}.parquet"
+    if not os.path.exists(path):
+        return None
+    df = pd.read_parquet(path, columns=[])
+    return df.index[0], df.index[-1]
+
+
 def merge_by_date(all_trades):
     all_entries = [e for trades in all_trades for e in trades]
     all_entries.sort(key=lambda e: e[0])
@@ -125,6 +139,10 @@ def main():
     with open(args.top_json, encoding="utf-8") as f:
         top_rows = json.load(f)
 
+    print(f"ws.HISTORY_YEARS in effect: {ws.HISTORY_YEARS} "
+          f"(0 = no truncation; if this isn't what you set, check your shell's env-var syntax -- "
+          f"PowerShell needs $env:WS_HISTORY_YEARS=\"0\", not set WS_HISTORY_YEARS=0)")
+
     all_trades, date_ranges, total_trades = [], [], 0
     for spec in combo_spec:
         row = _row_for(top_rows, spec["asset"], spec["tf"], spec["local_rank"])
@@ -137,8 +155,10 @@ def main():
         all_trades.append(trades)
         date_ranges.append((d0, d1))
         total_trades += len(trades)
+        raw_range = _raw_parquet_range(spec["asset"], spec["tf"])
+        raw_note = f", raw parquet range {raw_range[0].date()} -> {raw_range[1].date()}" if raw_range else ""
         print(f"  {spec['asset']}/{spec['tf']} risk_pct={spec['risk_pct']}%: {len(trades)} trades, "
-              f"data {d0.date()} -> {d1.date()}")
+              f"data used {d0.date()} -> {d1.date()}{raw_note}")
 
     if len(all_trades) < len(combo_spec):
         print(f"\n{len(combo_spec) - len(all_trades)} of {len(combo_spec)} candidates missing here -- "
