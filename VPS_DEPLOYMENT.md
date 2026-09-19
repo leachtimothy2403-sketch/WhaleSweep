@@ -195,6 +195,52 @@ parameter dict — useful for a quick individual check, but
 `screen_all_candidates.py` is what actually answers "which of these 200
 candidates is worth trusting", since score order isn't it.
 
+### Bucketing by worst-window pass-rate tier (no re-run needed)
+
+Once `screen_all_candidates.py` has written `candidate_screen.csv`,
+`worst_window_pass_pct` and `worst_window_n` are already sitting in it
+for every candidate — re-bucketing them against a threshold (e.g. "how
+many clear 70%?") doesn't need the expensive screen run again:
+
+```powershell
+py -3 tier_report.py                      # default tiers: 70%, 50%, 30%
+py -3 tier_report.py --gate2-pass-only    # only candidates that also passed Gate 2
+py -3 tier_report.py --min-n 30           # ignore thin (<30-cohort) worst-window samples
+```
+
+Prints, per tier, how many candidates clear it and lists them with
+their `worst_window_start` date — if a pile of *different* assets land
+on the exact same percentage, check whether they share a
+`worst_window_start` too (a real shared market-wide stress period) or
+not (expected coincidence: `worst_window_n` is ~105 for nearly every
+candidate here, so there are only ~106 achievable percentages, and
+collisions across unrelated candidates are normal, not a bug — first
+confirmed on the 2026-09-19 run's own 85.7% cluster, whose 10 top
+candidates had 10 different `worst_window_start` dates).
+
+### Checking sensitivity to --risk-pct (also no full re-run needed)
+
+`candidate_report.py`/`screen_all_candidates.py`'s `--risk-pct` default
+(0.0075 = 0.75%) is inherited from RCTBE's `PROPFIRM_RANK_RISK_PCT`
+default via MeanReversion's own `candidate_report.py` — it was never
+calibrated specifically for WhaleSweep's candidates. `risk_sweep.py`
+checks how much that choice actually matters:
+
+```powershell
+py -3 risk_sweep.py                                       # every candidate, default risk levels
+py -3 risk_sweep.py --gate2-pass-only                      # just the Gate-2 survivors
+py -3 risk_sweep.py --asset XAUUSD --tf 5min --rank 1      # one candidate, full detail
+```
+
+Only re-runs the historical-replay check (the one step that actually
+depends on `risk_pct`) at each level, reusing the Gate 2/plateau
+verdicts already in `candidate_screen.csv` — a full sweep of the whole
+merged pool takes low single-digit minutes, not another 20-60 minute
+run. A candidate whose worst-window pass rate holds up across a range
+of risk levels is a safer bet than one that only looks good at exactly
+0.75%, the same way a plateau-check PASS is worth more than a single
+lucky parameter setting.
+
 ## Sending results back
 
 ```powershell
