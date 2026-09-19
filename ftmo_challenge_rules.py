@@ -108,8 +108,26 @@ def rolling_worst_window_pass_rate(mondays, outcomes, window_months=ROLLING_WIND
     date) — not the average. A window with fewer than 8 cohorts, or
     where >15% of cohorts are still-running (too recent to have a real
     outcome yet), is skipped as not yet a reliable read, same as RCTBE's
-    own implementation."""
-    worst_rate, worst_start = 1.1, None
+    own implementation.
+
+    Also returns the WINNING window's own cohort count (2026-09-19,
+    added after screen_all_candidates.py's first real run surfaced the
+    same "85.7%" figure across many unrelated candidates — 12/14 is the
+    smallest cohort count that rounds to 85.7%, and RCTBE's own several
+    copies of this function have the identical gap: nothing here ever
+    told the caller whether a reported worst-window rate rested on 14
+    resolved cohorts (~3 months of genuinely resolved outcomes,
+    dominated by noise) or 100+ (a real multi-year stress read). A
+    24-month-WIDE window can still contain very few RESOLVED cohorts if
+    that candidate simply doesn't fire many complete challenge attempts
+    during that stretch — the window's calendar width alone doesn't
+    guarantee sample size. Callers should treat a passing worst-window
+    rate on a small n as unproven, not equivalent to the same rate on a
+    large n — this function only decides whether a window counts at all
+    (>=8, per the docstring above); it deliberately does NOT decide what
+    counts as "enough to trust", since raising that bar here would
+    silently change every other RCTBE-descended script's numbers too."""
+    worst_rate, worst_start, worst_n = 1.1, None, None
     for anchor in mondays:
         window_end = anchor + pd.Timedelta(days=int(window_months * 30.44))
         in_window = [o for m, o in zip(mondays, outcomes) if anchor <= m < window_end]
@@ -121,8 +139,8 @@ def rolling_worst_window_pass_rate(mondays, outcomes, window_months=ROLLING_WIND
         n_pass = sum(1 for o in in_window if o == "PASS")
         rate = n_pass / len(in_window)
         if rate < worst_rate:
-            worst_rate, worst_start = rate, anchor
-    return worst_rate, worst_start
+            worst_rate, worst_start, worst_n = rate, anchor, len(in_window)
+    return worst_rate, worst_start, worst_n
 
 
 def run_phase(by_date, days, risk_amt, target_equity, daily_loss_limit, min_days,

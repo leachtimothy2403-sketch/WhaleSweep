@@ -35,6 +35,19 @@ with that candidate's own (asset, tf, rank-within-that-pair) to see its
 full parameter set and per-check detail. The "local_rank" column here
 is exactly the --rank value to pass it.
 
+2026-09-19 addendum: the first real run of this script surfaced a
+second, related problem — many DIFFERENT candidates across DIFFERENT
+assets shared the exact same worst_window_pass_pct (85.7%, repeatedly).
+85.7% = 12/14, and 14 is the smallest cohort count the >=8-cohort
+minimum allows to round to that figure — meaning several of those
+"good-looking" worst-window numbers rested on as few as ~14 resolved
+cohorts, not the multi-year stress-test read the metric is meant to be.
+ftmo_challenge_rules.rolling_worst_window_pass_rate now also returns
+that window's own cohort count (worst_window_n); this script reports it
+as `ww_n` and appends a `*` flag whenever ww_n < 30, so a thin sample
+is visible in the table itself rather than silently trusted at face
+value alongside a robustly-sampled one.
+
 Usage:
     py -3 screen_all_candidates.py
     py -3 screen_all_candidates.py --asset NDX100 --tf 5min
@@ -66,6 +79,7 @@ def screen_one(row: dict, local_rank: int, df, risk_pct: float) -> dict:
         "overall_fail_pct": replay.get("overall_fail_pct"),
         "worst_window_pass_pct": replay.get("worst_window_pass_pct"),
         "worst_window_start": replay.get("worst_window_start"),
+        "worst_window_n": replay.get("worst_window_n"),
         "fail_reasons": replay.get("fail_reasons"),
         "note": replay.get("note"),
     }
@@ -130,30 +144,43 @@ def main():
     def sort_key(r):
         gate2_ok = 1 if r["gate2_verdict"] == "PASS" else 0
         wwp = r["worst_window_pass_pct"]
+        wwn = r["worst_window_n"]
         has_wwp = 1 if wwp is not None else 0
-        return (gate2_ok, has_wwp, wwp if wwp is not None else 0)
+        # A thin worst-window sample (< 30 resolved cohorts, ~7 months)
+        # is unproven, not proven-good — don't let its raw percentage
+        # outrank a candidate with a robustly-sampled worst window.
+        robust = 1 if (wwn is not None and wwn >= 30) else 0
+        return (gate2_ok, has_wwp, robust, wwp if wwp is not None else 0)
 
     results.sort(key=sort_key, reverse=True)
 
     print(f"\n{'=' * 108}")
     header = (f"{'asset':8s} {'tf':5s} {'rank':4s} {'score':>8s} {'gate2':6s} {'plateau':8s} "
-              f"{'worst_win%':>10s} {'overall%':>9s} {'n_cohorts':>9s} {'window_start':>12s}")
+              f"{'worst_win%':>11s} {'ww_n':>5s} {'overall%':>9s} {'n_cohorts':>9s} {'window_start':>12s}")
     print(header)
     for r in results:
         wwp = r["worst_window_pass_pct"]
-        wwp_str = f"{wwp:.1f}" if wwp is not None else ("N/A" if r["note"] is None else "n/trades")
+        wwn = r["worst_window_n"]
+        thin_flag = "*" if (wwp is not None and wwn is not None and wwn < 30) else ""
+        wwp_str = (f"{wwp:.1f}{thin_flag}" if wwp is not None else
+                   ("N/A" if r["note"] is None else "n/trades"))
+        wwn_str = str(wwn) if wwn is not None else ""
         overall_str = f"{r['overall_pass_pct']:.1f}" if r["overall_pass_pct"] is not None else "N/A"
         n_cohorts_str = str(r["n_cohorts"]) if r["n_cohorts"] is not None else "0"
         print(f"{r['asset']:8s} {r['tf']:5s} {r['local_rank']:4d} {r['score']:8.2f} {r['gate2_verdict']:6s} "
-              f"{r['plateau_verdict']:8s} {wwp_str:>10s} {overall_str:>9s} {n_cohorts_str:>9s} "
+              f"{r['plateau_verdict']:8s} {wwp_str:>11s} {wwn_str:>5s} {overall_str:>9s} {n_cohorts_str:>9s} "
               f"{str(r['worst_window_start'] or ''):>12s}")
 
     n_gate2_pass = sum(1 for r in results if r["gate2_verdict"] == "PASS")
     n_both_pass = sum(1 for r in results if r["gate2_verdict"] == "PASS" and r["plateau_verdict"] == "PASS")
     n_real_wwp = sum(1 for r in results if r["worst_window_pass_pct"] is not None)
+    n_robust_wwp = sum(1 for r in results if r["worst_window_pass_pct"] is not None
+                        and r["worst_window_n"] is not None and r["worst_window_n"] >= 30)
     print(f"\n{n_gate2_pass}/{len(results)} pass Gate 2 (OOS holdout). "
           f"{n_both_pass}/{len(results)} pass BOTH Gate 2 and the plateau check. "
-          f"{n_real_wwp}/{len(results)} have enough history for a real worst-24-month-window number.")
+          f"{n_real_wwp}/{len(results)} have SOME worst-24-month-window number, but only "
+          f"{n_robust_wwp}/{len(results)} rest on >=30 resolved cohorts (a `*` in the table above "
+          f"marks a thin one -- treat those percentages as unproven, not as evidence either way).")
     print("A Gate 2 FAIL doesn't make a candidate automatically worthless (the search's own accept "
           "gate already required min_pf>1 across most walk-forward periods) but its edge didn't hold "
           "up on genuinely unseen data as strongly as its search-time score suggested — weight these "

@@ -56,7 +56,7 @@ def historical_replay_check(row: dict, df, risk_pct: float) -> dict:
             fail_reasons[o["reason"]] += 1
 
     outcome_strs = [o["outcome"] for o in outcomes]
-    worst_rate, worst_start = ftmo.rolling_worst_window_pass_rate(mondays, outcome_strs)
+    worst_rate, worst_start, worst_n = ftmo.rolling_worst_window_pass_rate(mondays, outcome_strs)
 
     return {
         "n_trades": len(records), "n_cohorts": n,
@@ -67,6 +67,12 @@ def historical_replay_check(row: dict, df, risk_pct: float) -> dict:
         "fail_reasons": dict(fail_reasons),
         "worst_window_pass_pct": round(100 * worst_rate, 1) if worst_start is not None else None,
         "worst_window_start": str(worst_start) if worst_start is not None else None,
+        # Sample size the worst-window figure above actually rests on —
+        # see rolling_worst_window_pass_rate's own docstring (2026-09-19):
+        # an 85.7% resting on 14 cohorts is a much weaker claim than the
+        # same number resting on 100+. Treat worst_window_n < ~30 as a
+        # thin, noisy read regardless of how good the percentage looks.
+        "worst_window_n": worst_n,
     }
 
 
@@ -120,9 +126,14 @@ def main():
                   f"({replay['n_cohorts']} weekly cohorts, {replay['n_trades']} trades) "
                   f"fail_reasons={replay['fail_reasons']}")
             wwp = replay["worst_window_pass_pct"]
+            wwn = replay.get("worst_window_n")
+            confidence = ("" if wwp is None else
+                          "  [THIN SAMPLE -- weight cautiously]" if wwn is not None and wwn < 30 else "")
             print(f"    WORST 24-MONTH WINDOW pass={wwp}%" +
-                  (f" (starting {replay['worst_window_start']})" if wwp is not None else
+                  (f" (starting {replay['worst_window_start']}, {wwn} resolved cohorts in that window)"
+                   if wwp is not None else
                    "  — not enough history yet for a 24-month window with >=8 resolved cohorts") +
+                  confidence +
                   "  <-- this, not the overall average above, is the number worth trusting")
         print()
 
