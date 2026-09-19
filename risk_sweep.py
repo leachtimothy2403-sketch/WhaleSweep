@@ -48,7 +48,28 @@ import json
 import time
 
 import whale_sweep as ws
+import gate2_holdout as g2
 from candidate_report import historical_replay_check
+
+
+def _trade_frequency(row: dict, df) -> dict:
+    """Trades/week is a property of the candidate's own entry logic, not
+    of position sizing -- unlike everything else in this script, it does
+    NOT depend on risk_pct, so it's computed once per candidate rather
+    than once per risk level (2026-09-19, per Tim)."""
+    import pandas as pd
+    p = g2._candidate_params(row)
+    records = ws.get_trade_records(df, p)
+    if not records:
+        return {"n_trades": 0, "trades_per_week": None, "history_days": None}
+    days = [pd.Timestamp(r["day_id"]).date() for r in records]
+    span_days = (max(days) - min(days)).days + 1
+    weeks = span_days / 7
+    return {
+        "n_trades": len(records),
+        "trades_per_week": round(len(records) / weeks, 2) if weeks > 0 else None,
+        "history_days": span_days,
+    }
 
 # Mirrors the range RCTBE's own _prop_firm_analysis.py tests
 # (RISK_LEVELS = [0.002, 0.0025, ..., 0.02]), trimmed to a handful of
@@ -160,6 +181,8 @@ def main():
             df_cache[key] = ws.load_precomputed(*key)
         df = df_cache[key]
 
+        freq = _trade_frequency(row, df)
+
         per_risk = {}
         for risk_pct in args.risk_pcts:
             try:
@@ -172,6 +195,8 @@ def main():
                 "asset": row["asset"], "tf": row["entry_timeframe"], "local_rank": lr,
                 "risk_pct": risk_pct,
                 "gate2_verdict": sr.get("gate2_verdict"), "plateau_verdict": sr.get("plateau_verdict"),
+                "n_trades_total": freq["n_trades"], "trades_per_week": freq["trades_per_week"],
+                "history_days": freq["history_days"],
                 "n_cohorts": replay.get("n_cohorts"),
                 "n_pass": replay.get("n_pass"), "n_fail": replay.get("n_fail"),
                 "overall_pass_pct": replay.get("overall_pass_pct"),
@@ -192,8 +217,12 @@ def main():
             # candidate -- 19 risk levels don't fit on one line legibly.
             g2v = sr.get("gate2_verdict", "?")
             plv = sr.get("plateau_verdict", "?")
+            twk = freq["trades_per_week"]
+            hist_yrs = (freq["history_days"] / 365.25) if freq["history_days"] else None
+            twk_str = f"{twk:.2f}" if twk is not None else "n/a"
+            hist_str = f"{hist_yrs:.1f}yr / {freq['n_trades']} trades" if hist_yrs is not None else "n/a"
             print(f"\n=== {row['asset']} {row['entry_timeframe']} rank={lr} "
-                  f"(gate2={g2v}, plateau={plv}) ===")
+                  f"(gate2={g2v}, plateau={plv}) === trades/week={twk_str}  (history: {hist_str})")
             print(f"{'risk_pct':>9s} {'pass%':>7s} {'fail%':>7s} {'still_going%':>13s} "
                   f"{'n_cohorts':>9s} {'median_days':>12s} {'mean_days':>10s} {'min-max_days':>13s}")
             for r in args.risk_pcts:
@@ -226,8 +255,10 @@ def main():
                     continue
                 wwp = per_risk[r]["worst_window_pass_pct"]
                 cells.append(f"{r * 100:>5.2f}%->{wwp:5.1f}%" if wwp is not None else f"{r * 100:>5.2f}%->  N/A")
+            twk = freq["trades_per_week"]
+            twk_str = f"{twk:5.2f}/wk" if twk is not None else " n/a/wk"
             print(f"{row['asset']:8s} {row['entry_timeframe']:5s} rank={lr:>2d} "
-                  f"gate2={g2v:6s} plateau={plv:6s}  " + "  ".join(cells))
+                  f"gate2={g2v:6s} plateau={plv:6s} {twk_str}  " + "  ".join(cells))
 
         if not args.pick and ((i + 1) % 10 == 0 or (i + 1) == len(targets)):
             print(f"  ({i + 1}/{len(targets)} candidates, {time.time() - t0:.0f}s elapsed)")
