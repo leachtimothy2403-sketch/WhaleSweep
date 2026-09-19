@@ -155,7 +155,7 @@ going forward.
 A high `score` in `top_strategies.json` is a search-time filter, not a
 verdict — confirmed directly on the first real merged run (2026-09-19):
 NDX100/5min's top 3 by score, checked individually, came back FAIL /
-FAIL / FAIL on Gate 2, with worst-24-month-window pass rates of
+FAIL / FAIL on Gate 2, with worst-window pass rates of
 "not enough history" / 85.7% / 39.0% — in DECREASING score order but
 NOT decreasing real-world order. This is the identical failure RCTBE
 found in Layer 2 (`RCTBE_L2_PROPFIRM_RANK`'s own comment: "score
@@ -171,7 +171,7 @@ py -3 screen_all_candidates.py
 Runs the full three-gate check (`gate2_holdout.py`, `plateau_check.py`,
 the real historical-cohort FTMO replay) against EVERY candidate in the
 merged `top_strategies.json`, not just the top few, and prints/writes a
-table sorted by Gate 2 verdict then worst-24-month-window pass rate —
+table sorted by Gate 2 verdict then worst-window pass rate —
 NOT by search score. Takes a few minutes per candidate's plateau check
 (each perturbs ~15-27 neighbors, each a full walk-forward backtest), so
 budget roughly `n_candidates x 10-30s` for the whole merged pool (162
@@ -240,6 +240,51 @@ run. A candidate whose worst-window pass rate holds up across a range
 of risk levels is a safer bet than one that only looks good at exactly
 0.75%, the same way a plateau-check PASS is worth more than a single
 lucky parameter setting.
+
+## Re-running after the 2026-09-19 trade-frequency overhaul
+
+See README.md's "2026-09-19: trade-frequency overhaul" section for the
+full why. The practical consequence: **every precomputed `.parquet` file
+and every `top_strategies.json`/`candidate_screen.csv` on the VPS predates
+this change** and must be treated as stale — old files are missing the new
+`asian_high`/`asian_low`/`london_high`/`london_low`/`prev_week_high`/
+`prev_week_low` columns entirely (code degrades gracefully rather than
+crashing on them, but `include_session_levels=True` candidates simply
+can't be found against old data), and old search results were scored
+against ~10 years of history instead of the new ~2-year default, a
+narrower session window, no level re-arm, and no minimum-trade-frequency
+gate — none of that is comparable to a fresh run's scores or trade counts.
+
+```powershell
+cd C:\Users\Administrator\WhaleSweep
+git pull                    # pulls the new precompute.py/whale_sweep.py/etc.
+
+.\precompute_all.ps1        # MUST re-run for all 8 assets -- new level columns
+py -3 selftest.py           # sanity check before trusting a long search
+```
+
+**Before relaunching the search, clear out old checkpoints** — don't let
+`whale_sweep_output_group*\checkpoint.json` resume, since it would mix
+stale rows (computed against the old 10-year data / old SPACE, which
+didn't even have `include_session_levels`/`allow_level_rearm`/the widened
+`session_start_minutes` as keys) into the same top-N list as fresh rows
+computed under the new regime — not an apples-to-apples comparison, and
+`_insert_top`'s score-based ranking has no way to tell the difference:
+
+```powershell
+Remove-Item whale_sweep_output_group*\checkpoint.json, `
+    whale_sweep_output_group*\results.csv, `
+    whale_sweep_output_group*\top_strategies.json, `
+    whale_sweep_output_group*\DONE `
+    -ErrorAction SilentlyContinue
+```
+
+Then launch as normal (see "Running the search" below) — every fresh
+iteration now truncates to `WS_HISTORY_YEARS` (default 2.0), sweeps
+`session_start_minutes` and a wider `session_end_minutes`, can produce
+`allow_level_rearm=True`/`include_session_levels=True` candidates, and
+hard-rejects anything averaging under `WS_MIN_TRADES_PER_WEEK` (default
+2.0) trades/week before it ever reaches the top-N list.
 
 ## Sending results back
 

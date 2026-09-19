@@ -20,7 +20,13 @@ established conventions this project reuses rather than reinvents).
      sell-side liquidity above the immediate previous-day high.
    - `SWING_LOW_BELOW_PDL` — nearest confirmed swing low below PDL,
      symmetric.
-   At any point in time each of these 6 levels is classified as **upside**
+   - **Added 2026-09-19** (`include_session_levels`, per Tim — real
+     intraday liquidity pools, not just the daily PDH/PDL family):
+     `ASIAN_HIGH`/`ASIAN_LOW` (the Asian session's high/low, 18:00–03:00
+     NY), `LONDON_HIGH`/`LONDON_LOW` (03:00–08:00 NY), and
+     `PREV_WEEK_HIGH`/`PREV_WEEK_LOW` (the prior COMPLETE week's
+     high/low).
+   At any point in time each of these levels is classified as **upside**
    (above current price — sell-side liquidity, sweeping it sets up a
    SHORT) or **downside** (below current price — buy-side liquidity,
    sweeping it sets up a LONG), evaluated dynamically rather than assumed
@@ -28,14 +34,20 @@ established conventions this project reuses rather than reinvents).
 2. **Entry timeframe**: swept via `entry_timeframe` — 1min, 3min, or 5min.
    Level detection itself is always computed on daily bars, independent of
    the entry timeframe used to trade the reaction.
-3. **Session window**: right after NY cash-equity open. Default
-   09:30–11:00 America/New_York, both ends configurable
-   (`session_start`/`session_end_minutes`).
+3. **Session window**: originally right after NY cash-equity open only
+   (fixed 09:30 start, 11:00-max end) — **as of 2026-09-19, per Tim, both
+   ends are swept** (`session_start_minutes`: 03:00/05:00/07:00/09:30 NY;
+   `session_end_minutes`: 10:30 through 16:00 NY) since the old fixed
+   9:30-only start / 13:00-max end excluded the entire London session and
+   NY afternoon — the single biggest cause of unrealistically low trade
+   frequency (see "2026-09-19: trade-frequency overhaul" below).
 4. **Sweep**: a level is "swept" the first time an entry-timeframe bar's
    high trades above an upside level (or low trades below a downside
-   level) during the session window. Each level can trigger at most one
-   trade per day (`one_trade_per_level`, default True); overall trades/day
-   also capped (`max_trades_per_day`).
+   level) during the session window. By default each level can trigger at
+   most one trade per day; **as of 2026-09-19**, `allow_level_rearm=True`
+   lets a level re-arm once price closes back to its inside and be swept
+   again later the same session. Overall trades/day also capped
+   (`max_trades_per_day`).
 5. **Confirmation** (`confirmation_mode`, one required per candidate —
    swept to find which one(s) actually have edge):
    - `immediate_break` — enter on the sweep bar itself, no extra
@@ -148,8 +160,60 @@ VPS, both for the compute and for AAPL's data, which this laptop's
 cache doesn't have. See `VPS_DEPLOYMENT.md`. Every serious candidate
 that search produces should go through `candidate_report.py`'s three
 gates (OOS holdout, parameter plateau, FTMO historical replay -- trust
-the worst-24-month-window pass rate, not the average) before any real
+the worst-window pass rate, not the average) before any real
 risk is sized against it.
+
+**2026-09-19: trade-frequency overhaul (per Tim: "liquidty sweeps are
+things that happen near daily... how can we improve the number of
+trades?")**
+
+A fine-grained `risk_sweep.py --pick` run surfaced a real bug (days-to-pass
+was counting trading days, not calendar days — a reported "5-6 days" for a
+0.19-trades/week candidate was actually ~26 real calendar days) which,
+once fixed, exposed the real underlying problem: candidates were trading
+far too rarely to be a credible model of "liquidity sweeps happen near
+daily." Root causes diagnosed and fixed, all per Tim's explicit sign-off:
+
+- **Narrow session window** — was fixed at 09:30 NY start, capped at 13:00
+  NY end (a 1-3.5hr window that excluded London and the NY afternoon
+  entirely). `session_start_minutes` is now swept alongside
+  `session_end_minutes` (now extending to 16:00 NY).
+- **Levels usable only once/day** — a swept level was permanently
+  disabled for the rest of the day even if the sweep never led to a
+  trade. `allow_level_rearm=True` lets it re-arm once price closes back
+  to the inside and be tested again later the same session.
+- **Only the daily PDH/PDL family** — `include_session_levels=True` adds
+  real intraday liquidity pools: Asian/London session H/L and the prior
+  complete week's H/L (see rule 1 above).
+- **Search barely penalized low frequency** — `log1p(n_trades)` in the
+  score formula made 100 vs. 1000 trades differ by only ~1.5x, so nothing
+  pushed the search away from candidates trading a handful of times a
+  year. `MIN_TRADES_PER_WEEK` (default 2.0, `WS_MIN_TRADES_PER_WEEK`) now
+  hard-rejects any candidate below that pace in `backtest_multiperiod`
+  (used by both the search's accept gate and `plateau_check.py`'s
+  neighbor checks).
+- **10 years of history diluted recent behavior** — truncated to the most
+  recent `WS_HISTORY_YEARS` (default 2.0) in `load_precomputed()`, the
+  single shared loader every script in this pipeline uses, so the cut
+  cascades everywhere automatically. Per Tim's explicit choice, accepting
+  that this makes the rolling worst-window methodology's original
+  24-month window degenerate against a 2-year-total history (exactly one
+  window, nothing to compare "worst" against) — adapted by shrinking
+  `ROLLING_WINDOW_MONTHS` to 12 (configurable via
+  `WS_ROLLING_WINDOW_MONTHS`) rather than replacing the methodology, so
+  the existing `>=8`/`>=30` resolved-cohort thresholds stay meaningful.
+
+Verified end-to-end on a real local 2.5yr EURUSD 5min precompute: with
+all 5 changes active together, a representative candidate went from
+0.19 trades/week (the case that triggered this investigation) to
+**13.92 trades/week**, days-to-pass dropped to a realistic 1-5 calendar
+days, and `gate2_holdout.py`/`plateau_check.py`/`candidate_report.py`/
+`screen_all_candidates.py`/`risk_sweep.py`/`tier_report.py` all ran
+clean against it. **Every existing VPS precomputed `.parquet` file and
+`top_strategies.json` predates this change** (old 10yr history, no
+session-level columns, no frequency gate) — see "Re-running after the
+2026-09-19 trade-frequency overhaul" in `VPS_DEPLOYMENT.md` before
+trusting or extending any prior search result.
 
 Results and any rule changes get logged here as dated update notes,
 same convention as MeanReversion's own README.
