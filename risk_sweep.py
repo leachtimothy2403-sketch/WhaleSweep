@@ -202,10 +202,19 @@ def main():
                 "overall_pass_pct": replay.get("overall_pass_pct"),
                 "overall_fail_pct": replay.get("overall_fail_pct"),
                 "overall_still_going_pct": replay.get("overall_still_going_pct"),
+                # Real calendar time to pass -- see ftmo_challenge_rules.
+                # simulate_1step's own comment (2026-09-19, per Tim: "how
+                # can it pass in 5-6 days with only 0.19 trades/week?" --
+                # it can't; the OLD "days" metric silently counted only
+                # days this candidate traded, not real elapsed time).
                 "median_days_to_pass": replay.get("median_days_to_pass"),
                 "mean_days_to_pass": replay.get("mean_days_to_pass"),
                 "min_days_to_pass": replay.get("min_days_to_pass"),
                 "max_days_to_pass": replay.get("max_days_to_pass"),
+                # Trading-day count (days this candidate actually traded
+                # before resolving) -- pacing context only, NOT real time.
+                "median_trading_days_to_pass": replay.get("median_trading_days_to_pass"),
+                "mean_trading_days_to_pass": replay.get("mean_trading_days_to_pass"),
                 "worst_window_pass_pct": replay.get("worst_window_pass_pct"),
                 "worst_window_n": replay.get("worst_window_n"),
                 "worst_window_start": replay.get("worst_window_start"),
@@ -224,7 +233,8 @@ def main():
             print(f"\n=== {row['asset']} {row['entry_timeframe']} rank={lr} "
                   f"(gate2={g2v}, plateau={plv}) === trades/week={twk_str}  (history: {hist_str})")
             print(f"{'risk_pct':>9s} {'pass%':>7s} {'fail%':>7s} {'still_going%':>13s} "
-                  f"{'n_cohorts':>9s} {'median_days':>12s} {'mean_days':>10s} {'min-max_days':>13s}")
+                  f"{'n_cohorts':>9s} {'median_cal_days':>16s} {'mean_cal_days':>14s} "
+                  f"{'min-max_cal_days':>17s} {'median_trading_days':>20s}")
             for r in args.risk_pcts:
                 rep = per_risk.get(r)
                 if rep is None:
@@ -241,10 +251,12 @@ def main():
                 mean_d = rep.get("mean_days_to_pass")
                 mn, mx = rep.get("min_days_to_pass"), rep.get("max_days_to_pass")
                 minmax = f"{mn}-{mx}" if mn is not None else "n/a"
+                med_td = rep.get("median_trading_days_to_pass")
                 print(f"{r * 100:8.2f}%  {pass_pct:6.1f}% {fail_pct:6.1f}% {sg_pct:12.1f}% "
                       f"{rep.get('n_cohorts'):9d} "
-                      f"{(str(med) if med is not None else 'n/a'):>12s} "
-                      f"{(str(mean_d) if mean_d is not None else 'n/a'):>10s} {minmax:>13s}")
+                      f"{(str(med) if med is not None else 'n/a'):>16s} "
+                      f"{(str(mean_d) if mean_d is not None else 'n/a'):>14s} {minmax:>17s} "
+                      f"{(str(med_td) if med_td is not None else 'n/a'):>20s}")
         elif per_risk:
             g2v = sr.get("gate2_verdict", "?")
             plv = sr.get("plateau_verdict", "?")
@@ -276,9 +288,10 @@ def main():
     if args.pick:
         print("\nNote the still_going% column, not just pass/fail: at low risk most cohorts never "
               "resolve either way within the available history (profit target too far away to "
-              "reach), so a 0% pass rate there usually means 'untested', not 'fails'. Read median "
-              "vs mean days-to-pass together too -- a mean far above the median means a handful of "
-              "slow passes are dragging the average, not a typical outcome.")
+              "reach), so a 0% pass rate there usually means 'untested', not 'fails'. The days "
+              "columns are now real CALENDAR days to pass (2026-09-19 fix) -- median_trading_days "
+              "is shown alongside for pacing context only: for an infrequent trader the two can "
+              "differ by a wide margin, since trading days skip every day with no trade.")
     else:
         print("\nRead this for stability, not just the highest number: a candidate whose worst-window "
               "pass rate stays roughly flat across 0.5%-1.5% risk is safer to size than one that only "

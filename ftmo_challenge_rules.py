@@ -203,7 +203,20 @@ def simulate_1step(by_date, all_days, start, risk_pct):
         by_date, days, risk_amt, target_equity=110_000.0,
         max_loss_buffer=10_000.0, trailing_max_loss=True,
         daily_loss_limit=3_000.0, min_days=1)
-    return {"outcome": outcome, "reason": reason, "days": n_days, "trades": n_trades, "end_equity": end_equity}
+    # n_days is a count of TRADING days traversed (days with >=1 trade --
+    # see run_phase's own docstring), NOT real elapsed calendar time. For
+    # an infrequent trader those are very different numbers: confirmed
+    # directly (2026-09-19, per Tim: "how can it pass in 5-6 days with
+    # only 0.19 trades/week?" -- it can't, in real time) on a real
+    # candidate where a reported "6 days to pass" was actually 26 real
+    # calendar days, because the 6 counted days were the only ones with
+    # a trade in that stretch. calendar_days is the real wall-clock
+    # answer to "how long until this account is funded" -- what a
+    # candidate_report.py/risk_sweep.py reader actually wants when they
+    # read "days to pass".
+    calendar_days = (days[n_days - 1] - start).days + 1 if 0 < n_days <= len(days) else None
+    return {"outcome": outcome, "reason": reason, "days": n_days, "calendar_days": calendar_days,
+            "trades": n_trades, "end_equity": end_equity}
 
 
 def simulate_2step(by_date, all_days, start, risk_pct, min_days=4, max_concurrent=None):

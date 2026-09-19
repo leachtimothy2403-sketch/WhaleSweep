@@ -49,7 +49,19 @@ def historical_replay_check(row: dict, df, risk_pct: float) -> dict:
     n = len(outcomes)
     n_pass = sum(1 for o in outcomes if o["outcome"] == "PASS")
     n_fail = sum(1 for o in outcomes if o["outcome"] == "FAIL")
-    pass_days = [o["days"] for o in outcomes if o["outcome"] == "PASS"]
+    # "days" (from simulate_1step) counts TRADING days -- days this
+    # candidate actually took a trade -- not real elapsed calendar time.
+    # For an infrequent trader those diverge hugely: confirmed directly
+    # (2026-09-19, per Tim: "how can it pass in 5-6 days with only 0.19
+    # trades/week?" -- it can't, in real time) on a real cohort where a
+    # reported "6 days to pass" was actually 26 real calendar days,
+    # because those were simply the only 6 days with a trade in that
+    # stretch. calendar_days_to_pass (from simulate_1step's own
+    # calendar_days field) is the real wall-clock answer to "how long
+    # until this account is funded" -- report that as the primary
+    # number, and trading_days_to_pass only as a secondary pacing detail.
+    pass_trading_days = [o["days"] for o in outcomes if o["outcome"] == "PASS"]
+    pass_calendar_days = [o["calendar_days"] for o in outcomes if o["outcome"] == "PASS"]
     fail_reasons = defaultdict(int)
     for o in outcomes:
         if o["outcome"] == "FAIL":
@@ -58,19 +70,28 @@ def historical_replay_check(row: dict, df, risk_pct: float) -> dict:
     outcome_strs = [o["outcome"] for o in outcomes]
     worst_rate, worst_start, worst_n = ftmo.rolling_worst_window_pass_rate(mondays, outcome_strs)
 
+    def _stats(vals):
+        if not vals:
+            return None, None, None, None
+        s = sorted(vals)
+        return s[len(s) // 2], round(sum(s) / len(s), 1), s[0], s[-1]
+
+    med_cal, mean_cal, min_cal, max_cal = _stats(pass_calendar_days)
+    med_td, mean_td, min_td, max_td = _stats(pass_trading_days)
+
     return {
         "n_trades": len(records), "n_cohorts": n, "n_pass": n_pass, "n_fail": n_fail,
         "overall_pass_pct": round(100 * n_pass / n, 1) if n else None,
         "overall_fail_pct": round(100 * n_fail / n, 1) if n else None,
         "overall_still_going_pct": round(100 * (n - n_pass - n_fail) / n, 1) if n else None,
-        "median_days_to_pass": (sorted(pass_days)[len(pass_days) // 2] if pass_days else None),
-        # mean alongside median (2026-09-19, per Tim: "how long do they take
-        # to pass") -- median alone hides a skewed tail (a handful of very
-        # slow passes at low risk can pull the mean far above the median
-        # without moving it at all); report both rather than pick one.
-        "mean_days_to_pass": (round(sum(pass_days) / len(pass_days), 1) if pass_days else None),
-        "min_days_to_pass": (min(pass_days) if pass_days else None),
-        "max_days_to_pass": (max(pass_days) if pass_days else None),
+        # Real calendar time to pass -- this is "how long do they take to
+        # pass", not the trading-day count below.
+        "median_days_to_pass": med_cal, "mean_days_to_pass": mean_cal,
+        "min_days_to_pass": min_cal, "max_days_to_pass": max_cal,
+        # Trading-day count (days this candidate actually traded before
+        # resolving) -- kept for pacing context, NOT the real elapsed time.
+        "median_trading_days_to_pass": med_td, "mean_trading_days_to_pass": mean_td,
+        "min_trading_days_to_pass": min_td, "max_trading_days_to_pass": max_td,
         "fail_reasons": dict(fail_reasons),
         "worst_window_pass_pct": round(100 * worst_rate, 1) if worst_start is not None else None,
         "worst_window_start": str(worst_start) if worst_start is not None else None,
@@ -129,7 +150,10 @@ def main():
             print(f"[Historical FTMO replay @ {args.risk_pct*100:.2f}% risk]  "
                   f"OVERALL pass={replay['overall_pass_pct']}% fail={replay['overall_fail_pct']}% "
                   f"still_running={replay['overall_still_going_pct']}% "
-                  f"median_days_to_pass={replay['median_days_to_pass']} "
+                  f"median_calendar_days_to_pass={replay['median_days_to_pass']} "
+                  f"(median_trading_days_to_pass={replay.get('median_trading_days_to_pass')} -- "
+                  f"days this candidate actually traded before resolving, NOT the same as real "
+                  f"elapsed time for an infrequent trader) "
                   f"({replay['n_cohorts']} weekly cohorts, {replay['n_trades']} trades) "
                   f"fail_reasons={replay['fail_reasons']}")
             wwp = replay["worst_window_pass_pct"]
