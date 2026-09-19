@@ -67,6 +67,18 @@ SPACE = {
     "entry_timeframe":         ["1min", "3min", "5min"],
     "atr_window":               [14, 20, 30],
     "include_secondary_levels": [False, True],          # PDH2/PDL2 + swing-beyond levels, vs. PDH/PDL only
+    # 2026-09-19, per Tim: liquidity sweeps happen against intraday levels
+    # too, not just the daily PDH/PDL family -- Asian session H/L, London
+    # session H/L, and the prior COMPLETE week's H/L are all real,
+    # commonly-referenced liquidity pools. True adds them as additional
+    # candidate levels each day (independent of include_secondary_levels).
+    "include_session_levels":   [False, True],
+    # 2026-09-19, per Tim: a level was previously usable only ONCE per day
+    # (permanently marked used the instant it was first swept, whether or
+    # not that sweep even led to a trade). True lets it re-arm once price
+    # closes back to the inside and be swept+traded again later the same
+    # session -- a level can legitimately get tested more than once a day.
+    "allow_level_rearm":        [False, True],
 
     "confirmation_mode":        CONFIRMATION_MODES,
     "close_beyond_lookback_bars": [1, 2, 3, 5],          # confirmation_mode="close_beyond" only
@@ -90,17 +102,31 @@ SPACE = {
     "tp_mode":                   ["fixed_rr", "reversal_to_open", "opposite_level"],
     "rr":                        [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0],
 
-    "session_end_minutes":       [630, 660, 690, 750, 780],  # 10:00 / 10:30 / 11:00 / 12:30 / 13:00 NY
+    # 2026-09-19, per Tim: sweeps happen near-daily in reality; a fixed
+    # 9:30-only start and a window that never runs past 13:00 NY excludes
+    # the entire London session and the whole NY afternoon, which was the
+    # single biggest structural cause of low trade frequency (see git
+    # history / the 2026-09-19 trade-frequency investigation). Now swept
+    # like everything else instead of fixed.
+    "session_start_minutes":     [180, 300, 420, 570],       # 03:00 (London open-ish) / 05:00 / 07:00 / 09:30 (old fixed value) NY
+    "session_end_minutes":       [630, 660, 690, 750, 780, 840, 900, 960],  # 10:30 / 11:00 / 11:30 / 12:30 / 13:00 / 14:00 / 15:00 / 16:00 (NY close) NY
     "max_trades_per_day":        [1, 2, 3, 5, 999],
     "skip_weekday":              [-1, 0, 1, 2, 3, 4],        # -1 = no skip; 0=Mon..4=Fri
     "cost_atr_mult":             [0.0, 0.02, 0.05],          # simple friction model: spread+slippage as a fraction of ATR
 }
 
-SESSION_START_MINUTES = 9 * 60 + 30   # 09:30 NY — fixed per the brief, not swept
-
 N_PERIODS = 5
 MIN_TRADES_PER_PERIOD = 20
 TOP_N = 50
+
+# 2026-09-19, per Tim: liquidity sweeps happen near-daily in reality, so a
+# candidate trading only a handful of times a YEAR isn't a rare gem -- it's
+# very likely fitted to a few lucky historical coincidences. The old score
+# formula's log1p(n_trades) term barely penalized this (100 trades vs 1000
+# only differs by ~1.5x in that term), so nothing pushed the search away
+# from low-frequency candidates. Hard-reject below this instead of relying
+# on score to sort it out. <=0 disables the gate (old behavior).
+MIN_TRADES_PER_WEEK = float(os.environ.get("WS_MIN_TRADES_PER_WEEK", "2.0"))
 
 RNG = np.random.default_rng()
 
@@ -109,7 +135,6 @@ def sample_params(rng: np.random.Generator = RNG) -> dict:
     p = {k: rng.choice(v) if not isinstance(v[0], bool) else bool(rng.choice(v)) for k, v in SPACE.items()}
     # normalize numpy scalar types to plain python for clean JSON/CSV output
     p = {k: (v.item() if hasattr(v, "item") else v) for k, v in p.items()}
-    p["session_start_minutes"] = SESSION_START_MINUTES
     return p
 
 
@@ -135,16 +160,42 @@ def discover_asset_timeframes() -> List[tuple[str, str]]:
     return out
 
 
+# 2026-09-19, per Tim: recent market behavior is what matters for a live
+# challenge attempt, not the full 10-year backtest -- also has a useful
+# side effect on trade frequency: gate2_holdout.py's OOS block and
+# backtest_multiperiod's periods all get proportionally SHORTER too (a
+# period is 1/5 of whatever load_precomputed() returns), so the same
+# MIN_TRADES_PER_PERIOD=20 now demands a much higher trade density just
+# to qualify. <=0 disables truncation (the old full-file behavior, for
+# comparison/debugging only -- see git history before this change).
+HISTORY_YEARS = float(os.environ.get("WS_HISTORY_YEARS", "2.0"))
+
+
 def load_precomputed(asset: str, tf: str) -> pd.DataFrame:
-    """Always returns the FULL, untruncated precomputed file, cached by
-    (asset, tf). Deliberately untouched by WS_IS_ONLY -- gate2_holdout.py,
-    plateau_check.py, and candidate_report.py all call this directly and
-    need the real periods 4-5 to do a genuinely blind OOS check. See
-    _search_view() for the IS-only slice the search loop itself uses."""
+    """Returns the precomputed file for (asset, tf), cached, truncated to
+    the most recent HISTORY_YEARS of calendar time (default 2.0 -- see
+    HISTORY_YEARS above). This is the SINGLE shared loader every other
+    script in this project calls -- whale_sweep.py's own search (via
+    _search_view(), which further truncates to periods 1-3 of WHATEVER
+    this returns), gate2_holdout.py, plateau_check.py, candidate_report.py,
+    screen_all_candidates.py, risk_sweep.py, tier_report.py -- so
+    truncating here cascades everywhere at once rather than needing every
+    consumer updated individually. Indicators (ATR/RSI/PDH/PDL/etc.) stay
+    correctly warmed up regardless of where this cuts, since precompute.py
+    always computes them over the FULL raw history before this ever runs;
+    slicing here only ever drops calendar time, never indicator lookback.
+    Deliberately still untouched by WS_IS_ONLY -- gate2_holdout.py/
+    plateau_check.py/candidate_report.py need whatever this returns in
+    full to do a genuinely blind OOS check within it; see _search_view()
+    for the additional IS-only slice the search loop itself uses on top
+    of this."""
     key = (asset, tf)
     if key not in _DF_CACHE:
         path = f"ws_precomputed_{asset}_{tf}.parquet"
         df = pd.read_parquet(path)
+        if HISTORY_YEARS > 0 and len(df) > 0:
+            cutoff = df.index[-1] - pd.Timedelta(days=HISTORY_YEARS * 365.25)
+            df = df[df.index >= cutoff].copy()
         _DF_CACHE[key] = df
     return _DF_CACHE[key]
 
@@ -311,6 +362,22 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
     pdh2 = df["pdh2"].to_numpy(); pdl2 = df["pdl2"].to_numpy()
     swh = df["swing_high_above_pdh"].to_numpy(); swl = df["swing_low_below_pdl"].to_numpy()
     sess_open = df["session_open_930"].to_numpy()
+    # Asian/London session H-L + prior-week H-L are only present in
+    # parquets regenerated by the 2026-09-19 precompute.py update -- older
+    # precomputed files (not yet re-run through precompute.py) won't have
+    # these columns at all. Only touch them when the toggle that actually
+    # uses them is on, and degrade to "column missing" (all-NaN, so the
+    # level is silently skipped in the per-day loop below) rather than a
+    # bare KeyError, so unrelated candidates/backtests against stale
+    # parquet files keep working.
+    if p["include_session_levels"]:
+        na = np.full(n, np.nan)
+        asian_hi = df["asian_high"].to_numpy() if "asian_high" in df.columns else na
+        asian_lo = df["asian_low"].to_numpy() if "asian_low" in df.columns else na
+        london_hi = df["london_high"].to_numpy() if "london_high" in df.columns else na
+        london_lo = df["london_low"].to_numpy() if "london_low" in df.columns else na
+        pwh = df["prev_week_high"].to_numpy() if "prev_week_high" in df.columns else na
+        pwl = df["prev_week_low"].to_numpy() if "prev_week_low" in df.columns else na
     tf_sh = df["tf_swing_high_confirmed"].to_numpy(); tf_sl = df["tf_swing_low_confirmed"].to_numpy()
 
     in_session = (ny_min >= p["session_start_minutes"]) & (ny_min < p["session_end_minutes"])
@@ -338,12 +405,25 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
         if p["include_secondary_levels"]:
             raw_levels += [("PDH2", pdh2[row0]), ("PDL2", pdl2[row0]),
                            ("SWING_HIGH_ABOVE_PDH", swh[row0]), ("SWING_LOW_BELOW_PDL", swl[row0])]
+        if p["include_session_levels"]:
+            raw_levels += [("ASIAN_HIGH", asian_hi[row0]), ("ASIAN_LOW", asian_lo[row0]),
+                           ("LONDON_HIGH", london_hi[row0]), ("LONDON_LOW", london_lo[row0]),
+                           ("PREV_WEEK_HIGH", pwh[row0]), ("PREV_WEEK_LOW", pwl[row0])]
+        # lv[3] is a state string, not the plain "used" bool this was before
+        # 2026-09-19's re-arm feature: "armed" (never swept, or swept then
+        # re-closed to the inside and eligible again), "used" (swept once,
+        # permanently done for the day -- the legacy/default behavior when
+        # allow_level_rearm=False), or "await_rearm" (swept, waiting for
+        # price to close back to the inside before it can trigger again --
+        # only reachable when allow_level_rearm=True). Neither _compute_sl
+        # nor _compute_tp ever reads lv[3], only lv[1]/lv[2], so this is
+        # safe to repurpose.
         levels = []
         for name, val in raw_levels:
             if np.isnan(val) or np.isnan(so_v):
                 continue
             side = "upside" if val > so_v else "downside"
-            levels.append([name, float(val), side, False])
+            levels.append([name, float(val), side, "armed"])
         if not levels:
             continue
 
@@ -351,15 +431,27 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
         for i in range(sub_start, sub_end):
             if trades_today >= p["max_trades_per_day"]:
                 break
-            hi_, lo_ = h[i], l[i]
+            hi_, lo_, close_ = h[i], l[i], c[i]
             for lv in levels:
-                if lv[3]:
+                name, val, side, state = lv
+                if state == "await_rearm":
+                    # Re-test/fakeout modeling: a level that already got
+                    # swept+traded doesn't count as a fresh opportunity
+                    # again until price genuinely retreats back to the
+                    # inside of it (closes below a swept-upside level, or
+                    # above a swept-downside one) -- otherwise the very
+                    # next bar of the same continuous breakout move would
+                    # "re-sweep" it, which isn't a new event at all.
+                    closed_inside = (close_ < val) if side == "upside" else (close_ > val)
+                    if closed_inside:
+                        lv[3] = "armed"
                     continue
-                name, val, side, _ = lv
+                if state != "armed":
+                    continue
                 swept = (side == "upside" and hi_ > val) or (side == "downside" and lo_ < val)
                 if not swept:
                     continue
-                lv[3] = True
+                lv[3] = "await_rearm" if p["allow_level_rearm"] else "used"
                 entry_j = _resolve_confirmation(i, side, val, p, o, h, l, c, atr, tf_sh, tf_sl, sub_end)
                 if entry_j is None:
                     continue
@@ -455,6 +547,13 @@ def backtest_multiperiod(df: pd.DataFrame, p: dict, n_periods: int = N_PERIODS) 
     results = get_trade_records(df, p)
     if len(results) < MIN_TRADES_PER_PERIOD * 2:
         return None
+
+    if MIN_TRADES_PER_WEEK > 0:
+        trade_days = sorted(pd.Timestamp(r["day_id"]).date() for r in results)
+        span_days = (trade_days[-1] - trade_days[0]).days + 1
+        trades_per_week = len(results) / (span_days / 7) if span_days > 0 else 0.0
+        if trades_per_week < MIN_TRADES_PER_WEEK:
+            return None
 
     bounds = np.linspace(0, len(df), n_periods + 1).astype(int)
     period_stats = []
