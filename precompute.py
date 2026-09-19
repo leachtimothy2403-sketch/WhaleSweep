@@ -244,11 +244,59 @@ def _build_daily_levels(df_1m: pd.DataFrame) -> pd.DataFrame:
 
     daily_hl["swing_high_above_pdh"] = swing_high_above
     daily_hl["swing_low_below_pdl"] = swing_low_below
+
+    # 2026-09-19, per Tim: PDH/PDL are only 2 (or up to 6 with secondary
+    # levels) sweepable reference points a day, checked once each -- the
+    # single biggest reason real trade frequency came out far lower than
+    # "liquidity sweeps happen near-daily" would suggest. Real intraday
+    # liquidity pools also sit at the Asian/London session extremes and
+    # the prior week's high/low; add those here so generate_signals() has
+    # real levels to offer, not just PDH/PDL.
+    #
+    # Asian/London use a SESSION-day grouping shifted +7h from NY midnight
+    # (so the boundary falls at 17:00 NY, the standard forex trading-day
+    # rollover) rather than the plain calendar-day `_day` used everywhere
+    # else in this function. That's necessary because the Asian session
+    # (roughly 18:00-03:00 NY) straddles real midnight and would otherwise
+    # get split across two different `_day` buckets. A bar at t maps to
+    # session_day (t + 7h).date(): 18:00 D -> D+1, 02:00 D+1 -> D+1, 09:00
+    # D+1 -> D+1 -- so the whole overnight session lands in ONE group,
+    # labeled with the calendar date of the NY morning session that
+    # immediately follows it (exactly the day that session's levels should
+    # apply to -- no further .shift() needed, unlike pdh/pdl which shift
+    # a full DAY's high/low forward onto the NEXT day).
+    session_day = (ny_idx + pd.Timedelta(hours=7)).date
+    from datetime import time as _time2
+    asian_mask = (df["_ny_time"] >= _time2(18, 0)) | (df["_ny_time"] < _time2(3, 0))
+    london_mask = (df["_ny_time"] >= _time2(3, 0)) & (df["_ny_time"] < _time2(8, 0))
+    sday_series = pd.Series(session_day, index=df.index)
+    asian_hl = df[asian_mask].groupby(sday_series[asian_mask]).agg(
+        asian_high=("high", "max"), asian_low=("low", "min"))
+    london_hl = df[london_mask].groupby(sday_series[london_mask]).agg(
+        london_high=("high", "max"), london_low=("low", "min"))
+    daily_hl["asian_high"] = asian_hl["asian_high"].reindex(daily_hl.index)
+    daily_hl["asian_low"] = asian_hl["asian_low"].reindex(daily_hl.index)
+    daily_hl["london_high"] = london_hl["london_high"].reindex(daily_hl.index)
+    daily_hl["london_low"] = london_hl["london_low"].reindex(daily_hl.index)
+
+    # Prior COMPLETE week's high/low (same "shift one period at the
+    # coarser granularity" idea as pdh2/pdl2, just weekly instead of
+    # daily) -- W-SUN anchors the week Mon..Sun, close enough to the real
+    # Sun-17:00-to-Fri-17:00 NY forex week for a daily-resolution table.
+    week_id = pd.PeriodIndex(pd.to_datetime(daily_hl.index), freq="W-SUN")
+    weekly_hl = daily_hl.groupby(week_id).agg(w_high=("high", "max"), w_low=("low", "min")).sort_index()
+    weekly_hl["prev_week_high"] = weekly_hl["w_high"].shift(1)
+    weekly_hl["prev_week_low"] = weekly_hl["w_low"].shift(1)
+    daily_hl["prev_week_high"] = pd.Series(week_id, index=daily_hl.index).map(weekly_hl["prev_week_high"])
+    daily_hl["prev_week_low"] = pd.Series(week_id, index=daily_hl.index).map(weekly_hl["prev_week_low"])
+
     return daily_hl
 
 
 LEVEL_COLS = ["pdh", "pdl", "pdh2", "pdl2", "swing_high_above_pdh", "swing_low_below_pdl",
-              "session_open_930", "open_midnight"]
+              "session_open_930", "open_midnight",
+              "asian_high", "asian_low", "london_high", "london_low",
+              "prev_week_high", "prev_week_low"]
 
 
 def _resample(df_1m: pd.DataFrame, tf: str) -> pd.DataFrame:
