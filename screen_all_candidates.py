@@ -187,6 +187,26 @@ def main():
           "lower even when their worst-window number looks good, and note the search itself was run "
           "with the old WS_IS_ONLY leak if this pool predates that fix (see git history).")
 
+    # 2026-09-19 addendum (per Tim: "lets consider 30%, 50% and 70%"): report
+    # cumulative counts at explicit worst-window pass-rate tiers, not just
+    # the ranked table above. Reuses the SAME worst_window_pass_pct/
+    # worst_window_n this run already computed — no extra checks, no extra
+    # cost. Tiers are ">= threshold" and therefore cumulative (a candidate
+    # at 85.7% counts toward the 70/50/30 tiers alike), not exclusive
+    # buckets. To re-bucket an EXISTING candidate_screen.csv against
+    # different tiers without re-running this whole screen, use
+    # tier_report.py instead.
+    tiers = [70, 50, 30]
+    with_wwp = [r for r in results if r["worst_window_pass_pct"] is not None]
+    print(f"\nWorst-window pass-rate tiers ({len(with_wwp)}/{len(results)} candidates have a "
+          f"computable number):")
+    for t in tiers:
+        at_or_above = [r for r in with_wwp if r["worst_window_pass_pct"] >= t]
+        robust = [r for r in at_or_above
+                  if r["worst_window_n"] is not None and r["worst_window_n"] >= 30]
+        print(f"  >= {t}%: {len(at_or_above)}/{len(with_wwp)} "
+              f"({len(robust)} on a robust >=30-cohort sample)")
+
     os.makedirs(os.path.dirname(args.out_csv) or ".", exist_ok=True)
     if results:
         fieldnames = list(results[0].keys())
