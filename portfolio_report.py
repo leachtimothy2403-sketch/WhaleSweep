@@ -126,6 +126,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--top-json", default="whale_sweep_output/top_strategies.json")
     ap.add_argument("--challenge", choices=["1step", "2step"], default="2step")
+    ap.add_argument("--bucket-years", type=float, default=2.0,
+                     help="Width of the non-overlapping time buckets used to check pass-rate stability "
+                          "over the full history (default 2.0 years).")
     ap.add_argument("--combo-json", default=None,
                      help="Path to a JSON file with the same structure as DEFAULT_COMBO, to analyze a "
                           "different combination than the current default.")
@@ -192,6 +195,16 @@ def main():
                                                   f"reporting {actual_span:.2f}y, not the full {yrs}y requested)"
         print(f"\n=== Last {yrs} years (cohorts starting on/after {cutoff}){note} ===")
         summarize(sub, f"last {yrs}y")
+
+    print(f"\n=== Non-overlapping {args.bucket_years}-year buckets across the full span "
+          f"(is the pass rate stable over time, or is one stretch dragging/propping up the average?) ===")
+    bucket_start = all_days[0]
+    bucket_len = pd.Timedelta(days=int(args.bucket_years * 365.25))
+    while bucket_start <= all_days[-1]:
+        bucket_end = min(bucket_start + bucket_len, pd.Timestamp(all_days[-1]).date() + pd.Timedelta(days=1))
+        sub = [o for o in outcomes if bucket_start <= o["start"] < bucket_end]
+        summarize(sub, f"{bucket_start} -> {bucket_end - pd.Timedelta(days=1)}")
+        bucket_start = bucket_end
 
 
 if __name__ == "__main__":
