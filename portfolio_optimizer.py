@@ -305,6 +305,11 @@ def main():
     ap.add_argument("--max-size", type=int, default=6, help="Largest portfolio size to search.")
     ap.add_argument("--max-combos", type=int, default=4000,
                      help="Safety cap on total combinations evaluated across all sizes.")
+    ap.add_argument("--min-risk-pct", type=float, default=0.0002,
+                     help="Lower end of the average per-trade risk_pct swept per combo (default 0.02%%).")
+    ap.add_argument("--max-risk-pct", type=float, default=0.10,
+                     help="Upper end of the average per-trade risk_pct swept per combo (default 10%%).")
+    ap.add_argument("--k-grid-points", type=int, default=30)
     ap.add_argument("--out-csv", default="whale_sweep_output/portfolio_optimizer.csv")
     args = ap.parse_args()
 
@@ -340,7 +345,6 @@ def main():
     print(corr.round(2).to_string())
 
     n = len(cand_data)
-    k_grid = np.geomspace(0.05, 6.0, 22)
     results = []
     combos_tried = 0
     t0 = time.time()
@@ -352,6 +356,20 @@ def main():
             combo = [cand_data[i] for i in combo_idx]
             pair_corrs = [corr.iloc[i, j] for a, i in enumerate(combo_idx) for j in combo_idx[a + 1:]]
             avg_corr = float(np.mean(pair_corrs)) if pair_corrs else None
+            # 2026-09-19 fix: a single fixed absolute k range missed real
+            # crossings for combos with more assets / higher raw Kelly
+            # fractions -- aggregate daily risk scales with both, so the
+            # k where the pass-rate cliff happens shrinks as combos get
+            # bigger (confirmed directly: a 4-candidate combo's pass rate
+            # was 98% at k=0.02 and 45% at k=0.05, so a grid starting AT
+            # 0.05 never had a point on the high side to bracket against
+            # at all). Scale the grid by this combo's OWN mean Kelly
+            # fraction instead, so it always sweeps the same MEANINGFUL
+            # range of average per-trade risk_pct (0.02% to 10%) no
+            # matter how many assets or how aggressive their raw Kelly
+            # fractions are.
+            mean_kelly = float(np.mean([c["kelly_f"] for c in combo]))
+            k_grid = np.geomspace(args.min_risk_pct / mean_kelly, args.max_risk_pct / mean_kelly, args.k_grid_points)
             crossings = find_target_risk_levels(combo, args.challenge, args.target_pass_pct, args.tol_pct, k_grid)
             for cr in crossings:
                 results.append({
