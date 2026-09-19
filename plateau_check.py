@@ -12,8 +12,8 @@ likely fitted to noise than one whose neighborhood is broadly healthy.
 
 Categorical / non-ordered params (entry_timeframe, confirmation_mode,
 bos_mode, rsi_mode, tp_mode, reversal_requires_close,
-require_rsi_confirm, sl_extend_to_next_level, include_secondary_levels,
-skip_weekday) are held fixed, not perturbed — flipping any of these
+require_rsi_confirm, sl_extend_to_next_level, include_secondary_levels, allow_level_rearm,
+include_session_levels, skip_weekday) are held fixed, not perturbed — flipping any of these
 tests a different economic hypothesis, not neighborhood robustness of
 this one; the search sweeping them already answers "does another mode
 also work".
@@ -30,13 +30,17 @@ PERTURBABLE = [
     "atr_window", "close_beyond_lookback_bars", "wick_atr_mult",
     "reversal_lookback_bars", "bos_lookback_bars", "bos_confirm_atr_mult",
     "rsi_period", "rsi_ob", "rsi_os", "sl_atr_buffer_mult",
-    "sl_extend_check_atr_mult", "rr", "session_end_minutes",
+    "sl_extend_check_atr_mult", "rr", "session_start_minutes", "session_end_minutes",
     "max_trades_per_day", "cost_atr_mult",
 ]
 
 
 def _candidate_params(row: dict) -> dict:
-    keys = list(ws.SPACE.keys()) + ["session_start_minutes"]
+    # session_start_minutes lived here as a bolt-on before 2026-09-19
+    # (it wasn't in ws.SPACE, just written onto every row by sample_params()
+    # with a fixed value) -- now it's a native swept SPACE key, so
+    # list(ws.SPACE.keys()) already covers it.
+    keys = list(ws.SPACE.keys())
     return {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
 
 

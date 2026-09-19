@@ -35,7 +35,11 @@ DEGRADATION_MIN = 0.40
 
 
 def _candidate_params(row: dict) -> dict:
-    keys = list(ws.SPACE.keys()) + ["session_start_minutes"]
+    # session_start_minutes lived here as a bolt-on before 2026-09-19
+    # (it wasn't in ws.SPACE, just written onto every row by sample_params()
+    # with a fixed value) -- now it's a native swept SPACE key, so
+    # list(ws.SPACE.keys()) already covers it.
+    keys = list(ws.SPACE.keys())
     return {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
 
 
