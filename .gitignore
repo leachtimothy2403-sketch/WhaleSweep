@@ -22,6 +22,11 @@ whale_sweep_output*/top_strategies.json.old_global.json
 # in seconds, not worth versioning.
 whale_sweep_output*/candidate_screen.csv
 
+# risk_sweep.py's / portfolio_optimizer.py's own reports -- same convention,
+# regenerable from candidate_screen.csv + top_strategies.json.
+whale_sweep_output*/risk_sweep.csv
+whale_sweep_output*/portfolio_optimizer.csv
+
 # VPS parallel-launcher per-process console logs
 run*_console.log
 run*_console.log.err

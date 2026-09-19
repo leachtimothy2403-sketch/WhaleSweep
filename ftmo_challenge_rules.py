@@ -260,3 +260,69 @@ def simulate_2step(by_date, all_days, start, risk_pct, min_days=4, max_concurren
         daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent)
     return {"outcome": o2, "phase": 2, "reason": r2, "days": d1 + d2, "days_p1": d1, "days_p2": d2,
             "trades": t1 + t2, "end_equity": eq2}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Multi-asset (portfolio) generalization — 2026-09-19, per Tim: pick a
+#  decorrelated set of candidates and Kelly-weight their risk per trade.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# simulate_1step/simulate_2step above assume ONE candidate, ONE risk_pct
+# applied uniformly to every trade (by_date values are raw R-multiples,
+# risk_amt = START_EQUITY * risk_pct is a single scalar). A portfolio of
+# several candidates, each independently risk-sized (e.g. via its own
+# Kelly fraction), shares ONE real FTMO account — its daily-loss and
+# max-loss floors apply to the SUM of that day's P&L across every asset,
+# not per-asset. run_phase already only cares that by_date[day] is an
+# ORDERED list of dollar P&L amounts for that day and that risk_amt scales
+# them uniformly — so the natural generalization is: pre-scale each
+# candidate's own trades by ITS OWN risk_amt before merging (so by_date's
+# values are already dollars, not R-multiples), sort each day's merged
+# trades into real chronological order (so a mid-day breach from one
+# asset correctly halts that day's LATER trades from other assets, same
+# as it would for a single asset), and call run_phase with risk_amt=1.0
+# since the values are pre-scaled. portfolio_optimizer.py builds that
+# merged by_date; these two functions are the exact same phase-transition
+# logic as simulate_1step/simulate_2step, just skipping the internal
+# risk_pct multiplication and adding calendar_days to the 2-step case
+# (which never had it — see simulate_1step's own calendar_days comment
+# for why real elapsed time, not a trading-day count, is what a "how
+# long to pass" reader actually wants).
+
+
+def simulate_1step_portfolio(by_date_dollars, all_days, start, max_concurrent=None):
+    """Multi-asset generalization of simulate_1step. by_date_dollars
+    values are already-scaled DOLLAR P&L per trade (each asset's own
+    risk_pct baked in before merging), not R-multiples times a single
+    risk_pct — see the module-level comment above this section."""
+    days = walk_days(by_date_dollars, all_days, start)
+    outcome, reason, n_days, n_trades, end_equity, last_idx = run_phase(
+        by_date_dollars, days, risk_amt=1.0, target_equity=110_000.0,
+        max_loss_buffer=10_000.0, trailing_max_loss=True,
+        daily_loss_limit=3_000.0, min_days=1, max_concurrent=max_concurrent)
+    calendar_days = (days[last_idx] - start).days + 1 if 0 <= last_idx < len(days) else None
+    return {"outcome": outcome, "reason": reason, "days": n_days, "calendar_days": calendar_days,
+            "trades": n_trades, "end_equity": end_equity}
+
+
+def simulate_2step_portfolio(by_date_dollars, all_days, start, min_days=4, max_concurrent=None):
+    """Multi-asset generalization of simulate_2step — see the
+    module-level comment above this section for why by_date_dollars
+    holds pre-scaled dollar P&L instead of raw R-multiples."""
+    days = walk_days(by_date_dollars, all_days, start)
+    o1, r1, d1, t1, eq1, last_idx1 = run_phase(
+        by_date_dollars, days, risk_amt=1.0, target_equity=110_000.0, fail_equity=90_000.0,
+        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent)
+    if o1 != "PASS":
+        calendar_days = (days[last_idx1] - start).days + 1 if 0 <= last_idx1 < len(days) else None
+        return {"outcome": o1, "phase": 1, "reason": r1, "days": d1, "calendar_days": calendar_days,
+                "trades": t1, "end_equity": eq1}
+
+    # Phase 2 starts the NEXT trading day after Phase 1 completed, equity reset
+    phase2_days = days[last_idx1 + 1:]
+    o2, r2, d2, t2, eq2, last_idx2 = run_phase(
+        by_date_dollars, phase2_days, risk_amt=1.0, target_equity=105_000.0, fail_equity=90_000.0,
+        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent)
+    calendar_days = ((phase2_days[last_idx2] - start).days + 1) if 0 <= last_idx2 < len(phase2_days) else None
+    return {"outcome": o2, "phase": 2, "reason": r2, "days": d1 + d2, "days_p1": d1, "days_p2": d2,
+            "calendar_days": calendar_days, "trades": t1 + t2, "end_equity": eq2}
