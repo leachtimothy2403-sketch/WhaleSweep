@@ -289,7 +289,7 @@ hard-rejects anything averaging under `WS_MIN_TRADES_PER_WEEK` (default
 ## Sending results back
 
 ```powershell
-git add ws_precomputed_*.parquet whale_sweep_output/top_strategies.json whale_sweep_output_group*/top_strategies.json
+git add whale_sweep_output/top_strategies.json whale_sweep_output_group*/top_strategies.json
 git commit -m "WhaleSweep search results"
 git push
 ```
@@ -301,6 +301,47 @@ record, same "only the precomputed data + the ranked results are worth
 versioning" convention as MeanReversion — everything else under
 `whale_sweep_output_group*/` is gitignored as regenerable working state.
 
+**Don't bundle the precomputed `.parquet` files into that same `git add`**
+(confirmed 2026-09-19, when a first attempt did exactly this and silently
+committed nothing): they're gitignored, so `ws_precomputed_*.parquet`
+matches zero files from git's point of view and `git add` fails with
+`fatal: pathspec ... did not match any files` — and because that's a
+single `git add` call with multiple pathspecs, the whole call aborts
+without staging ANYTHING, including the top_strategies.json files that
+would otherwise have matched fine. Always add the parquet files (if at
+all — see below) in their own separate `git add -f` call.
+
+**Think twice before force-adding the parquet files at all.** Now that
+`precompute.py` runs against the VPS's full ~10-year Dukascopy cache
+(HISTORY_YEARS truncation is a whale_sweep.py load-time filter, not a
+precompute-time one — the cached files themselves are always full
+history), most 1min files now run 113-155MB each (confirmed on the
+2026-09-19 run: EURUSD 134.0MB, GBPUSD 139.9MB, XAUUSD 154.9MB, NDX100
+139.7MB, SPX500 113.4MB, US30 141.9MB, GER40 128.0MB) — all comfortably
+over GitHub's hard 100MB-per-file limit (without Git LFS, which this
+repo doesn't use), so `git push` would simply reject them. 3min/5min
+files are smaller (27-57MB) and would go through, but 24 files' worth
+still adds ~1.5GB to the repo's permanent history for something
+`precompute_all.ps1` regenerates from raw data in a couple of minutes
+whenever it's actually needed.
+
+Given the laptop's own Dukascopy cache already has EURUSD, GBPUSD,
+XAUUSD, NDX100, SPX500, US30, GER40 (see README.md), the practical
+answer is: **don't force-add any of them** — re-run `precompute_all.ps1`
+on the laptop directly if you want to inspect a candidate locally.
+**AAPL is the one exception** (its ~9.3yr history lives only in the
+VPS's Dukascopy cache) — its files are small enough to be safe (22.2MB /
+8.7MB / 5.6MB, all under the 100MB limit) and worth bringing back only
+if a real AAPL candidate is ever worth inspecting locally (the
+2026-09-19 run's own AAPL/1min rank 0 FAILED both Gate 2 and the
+plateau check, so there was nothing worth doing this for yet):
+
+```powershell
+git add -f ws_precomputed_AAPL_1min.parquet ws_precomputed_AAPL_3min.parquet ws_precomputed_AAPL_5min.parquet
+git commit -m "Bring back AAPL precomputed data (not in the laptop's own Dukascopy cache)"
+git push
+```
+
 Then, back on the laptop:
 
 ```powershell
@@ -309,7 +350,8 @@ git pull
 ```
 
 That brings down the merged `top_strategies.json`, each group's raw
-file, and (if force-added) the precomputed parquet files — enough to
-re-run `gate2_holdout.py`/`plateau_check.py`/`candidate_report.py`
-locally against the exact same data the VPS searched, without needing
-the VPS connection at all.
+file, and (if you deliberately force-added AAPL's, or any other,
+parquet files) those too — enough to re-run
+`gate2_holdout.py`/`plateau_check.py`/`candidate_report.py` locally
+against the exact same data the VPS searched, without needing the VPS
+connection at all.
