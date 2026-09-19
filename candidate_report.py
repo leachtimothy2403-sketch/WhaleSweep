@@ -59,11 +59,18 @@ def historical_replay_check(row: dict, df, risk_pct: float) -> dict:
     worst_rate, worst_start, worst_n = ftmo.rolling_worst_window_pass_rate(mondays, outcome_strs)
 
     return {
-        "n_trades": len(records), "n_cohorts": n,
+        "n_trades": len(records), "n_cohorts": n, "n_pass": n_pass, "n_fail": n_fail,
         "overall_pass_pct": round(100 * n_pass / n, 1) if n else None,
         "overall_fail_pct": round(100 * n_fail / n, 1) if n else None,
         "overall_still_going_pct": round(100 * (n - n_pass - n_fail) / n, 1) if n else None,
         "median_days_to_pass": (sorted(pass_days)[len(pass_days) // 2] if pass_days else None),
+        # mean alongside median (2026-09-19, per Tim: "how long do they take
+        # to pass") -- median alone hides a skewed tail (a handful of very
+        # slow passes at low risk can pull the mean far above the median
+        # without moving it at all); report both rather than pick one.
+        "mean_days_to_pass": (round(sum(pass_days) / len(pass_days), 1) if pass_days else None),
+        "min_days_to_pass": (min(pass_days) if pass_days else None),
+        "max_days_to_pass": (max(pass_days) if pass_days else None),
         "fail_reasons": dict(fail_reasons),
         "worst_window_pass_pct": round(100 * worst_rate, 1) if worst_start is not None else None,
         "worst_window_start": str(worst_start) if worst_start is not None else None,
