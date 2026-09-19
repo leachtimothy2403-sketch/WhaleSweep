@@ -120,6 +120,36 @@ $env:WS_ITERATIONS = "200000"
 py -3 whale_sweep.py
 ```
 
+## When the search finishes — merge the groups first
+
+Each of the `$Groups` parallel processes writes its OWN
+`whale_sweep_output_group<N>\top_strategies.json` (its own local
+top-50), so with the 8-asset universe split across 4 groups, each
+group's file already mixes 2 different (asset, timeframe) pairs by
+score. This is the exact same "N parallel workers each with their own
+ranked pool" shape RCTBE's own Layer 2 search hit (`_merge_layer2_
+results.py`) — its own finding was that a pure global score cap can let
+one asset with an inflated score consume nearly every slot, leaving
+other assets with zero surviving candidates even when they had a real
+edge. `merge_search_results.py` ports that fix: it concatenates all
+groups, keeps the global top-50 by score, ALSO keeps each (asset, tf)
+pair's own top-10 regardless of how the global ranking looks (WhaleSweep's
+finer key, since entry_timeframe is itself swept — RCTBE only floors by
+asset), dedupes, and writes the result to
+`whale_sweep_output\top_strategies.json` — exactly the default path
+`gate2_holdout.py`/`plateau_check.py`/`candidate_report.py` already
+expect, so no `--top-json` flag is needed after this:
+
+```powershell
+py -3 merge_search_results.py
+```
+
+It also writes `whale_sweep_output\top_strategies.json.old_global.json`
+— the naive pure-global-top-50 version with no per-(asset,tf) floor —
+purely so you can diff the two and see which candidates the floor
+rescued. Only the non-`.old_global` file is meant to be committed/used
+going forward.
+
 ## After the search — vetting a candidate before trusting it
 
 A high `score` in `top_strategies.json` is a search-time filter, not a
@@ -136,16 +166,36 @@ parameter-plateau check (`plateau_check.py`), and a real-historical-
 replay FTMO check (every-Monday cohort replay through
 `ftmo_challenge_rules.py`, reporting both the overall pass rate and the
 rolling-worst-24-month-window pass rate — trust the worst-window number,
-not the average, per that file's own docstring).
+not the average, per that file's own docstring). Run this for every
+(asset, tf) pair that has real candidates in the merged file, not just
+whichever one happens to be ranked #1 overall — the per-key floor above
+exists precisely so a lower-global-score-but-still-real candidate on
+another asset doesn't get skipped just because it wasn't in the top 5.
 
 ## Sending results back
 
 ```powershell
-git add ws_precomputed_*.parquet whale_sweep_output_group*/top_strategies.json
+git add ws_precomputed_*.parquet whale_sweep_output/top_strategies.json whale_sweep_output_group*/top_strategies.json
 git commit -m "WhaleSweep search results"
 git push
 ```
 
-Same "only the precomputed data + each group's `top_strategies.json` are
-worth versioning" convention as MeanReversion — everything else under
+The merged `whale_sweep_output\top_strategies.json` is the one that
+matters going forward (and what the gate scripts read by default); each
+group's own file is kept alongside it purely as the raw/unmerged
+record, same "only the precomputed data + the ranked results are worth
+versioning" convention as MeanReversion — everything else under
 `whale_sweep_output_group*/` is gitignored as regenerable working state.
+
+Then, back on the laptop:
+
+```powershell
+cd C:\Users\leach\WhaleSweep
+git pull
+```
+
+That brings down the merged `top_strategies.json`, each group's raw
+file, and (if force-added) the precomputed parquet files — enough to
+re-run `gate2_holdout.py`/`plateau_check.py`/`candidate_report.py`
+locally against the exact same data the VPS searched, without needing
+the VPS connection at all.

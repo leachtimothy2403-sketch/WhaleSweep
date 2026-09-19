@@ -15,6 +15,9 @@ whale_sweep_output*/DONE
 whale_sweep_output*/results.csv
 whale_sweep_output_local_smoketest/
 
+# merge_search_results.py's comparison-only output -- regenerate, don't commit.
+whale_sweep_output*/top_strategies.json.old_global.json
+
 # VPS parallel-launcher per-process console logs
 run*_console.log
 run*_console.log.err
