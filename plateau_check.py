@@ -31,7 +31,10 @@ PERTURBABLE = [
     "reversal_lookback_bars", "bos_lookback_bars", "bos_confirm_atr_mult",
     "rsi_period", "rsi_ob", "rsi_os", "sl_atr_buffer_mult",
     "sl_extend_check_atr_mult", "rr", "session_start_minutes", "session_end_minutes",
-    "max_trades_per_day", "cost_atr_mult",
+    "max_trades_per_day",
+    # cost_atr_mult removed 2026-09-20: no longer a swept SPACE key (real
+    # per-asset cost now comes from whale_sweep_cost_table.COST_TABLE
+    # instead), so there's nothing left to perturb here.
 ]
 
 
@@ -41,7 +44,11 @@ def _candidate_params(row: dict) -> dict:
     # with a fixed value) -- now it's a native swept SPACE key, so
     # list(ws.SPACE.keys()) already covers it.
     keys = list(ws.SPACE.keys())
-    return {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
+    p = {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
+    # "asset" isn't a swept SPACE key, but generate_signals() needs it
+    # (COST_TABLE lookup) -- carry it over explicitly (2026-09-20, cost fix).
+    p["asset"] = row["asset"]
+    return p
 
 
 def plateau_check(row: dict, df) -> dict:

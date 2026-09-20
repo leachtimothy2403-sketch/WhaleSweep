@@ -40,7 +40,11 @@ def _candidate_params(row: dict) -> dict:
     # with a fixed value) -- now it's a native swept SPACE key, so
     # list(ws.SPACE.keys()) already covers it.
     keys = list(ws.SPACE.keys())
-    return {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
+    p = {k: row.get(k, ws.SPACE.get(k, [None])[0]) for k in keys}
+    # "asset" isn't a swept SPACE key, but generate_signals() needs it
+    # (COST_TABLE lookup) -- carry it over explicitly (2026-09-20, cost fix).
+    p["asset"] = row["asset"]
+    return p
 
 
 def gate2_check(row: dict, df) -> dict:

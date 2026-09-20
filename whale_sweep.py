@@ -56,6 +56,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
+from whale_sweep_cost_table import COST_TABLE
+
 # ══════════════════════════════════════════════════════════════════════════
 #  Parameter space
 # ══════════════════════════════════════════════════════════════════════════
@@ -112,7 +114,6 @@ SPACE = {
     "session_end_minutes":       [630, 660, 690, 750, 780, 840, 900, 960],  # 10:30 / 11:00 / 11:30 / 12:30 / 13:00 / 14:00 / 15:00 / 16:00 (NY close) NY
     "max_trades_per_day":        [1, 2, 3, 5, 999],
     "skip_weekday":              [-1, 0, 1, 2, 3, 4],        # -1 = no skip; 0=Mon..4=Fri
-    "cost_atr_mult":             [0.0, 0.02, 0.05],          # simple friction model: spread+slippage as a fraction of ATR
 }
 
 N_PERIODS = 5
@@ -475,7 +476,7 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
                     "day_id": str(day_id[i]), "level": name, "direction": direction,
                     "sweep_idx": int(i), "entry_idx": int(entry_j),
                     "entry": entry_price, "sl": sl_price, "tp": tp_price, "risk": risk,
-                    "session_end_idx": int(sub_end - 1), "cost": p["cost_atr_mult"] * atr_j,
+                    "session_end_idx": int(sub_end - 1), "cost": COST_TABLE[p["asset"]],
                 })
                 trades_today += 1
                 if trades_today >= p["max_trades_per_day"]:
@@ -660,6 +661,7 @@ def main() -> None:
     for it in range(start_iter, n_iterations):
         p = sample_params()
         asset = str(RNG.choice(assets))
+        p["asset"] = asset
         tf = p["entry_timeframe"]
         path = Path(f"ws_precomputed_{asset}_{tf}.parquet")
         if not path.exists():
