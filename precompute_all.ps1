@@ -17,7 +17,7 @@
 $ErrorActionPreference = "Stop"
 
 $assets = @(
-    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40"
+    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40","BTCUSD"
 )
 
 foreach ($a in $assets) {

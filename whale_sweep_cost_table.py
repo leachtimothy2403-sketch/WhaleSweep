@@ -46,6 +46,8 @@ COST_TABLE: Dict[str, float] = {
     "US30":   2.78,
     "GER40":  3.39,
     "GBPUSD": 0.00010,
+    # UNVERIFIED -- placeholder for BTCUSD. Replace with live measured data.
+    "BTCUSD": 5.0,
     # UNVERIFIED -- see module docstring. Not broker-measured.
     "AAPL":   0.30,
 }
