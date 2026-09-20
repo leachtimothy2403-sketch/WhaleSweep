@@ -71,6 +71,8 @@ Usage:
     py -3 portfolio_optimizer.py --max-size 5 --min-ww-n 30
 """
 import argparse
+import functools
+import heapq
 import itertools
 import json
 import time
@@ -82,6 +84,7 @@ import pandas as pd
 import whale_sweep as ws
 import gate2_holdout as g2
 import ftmo_challenge_rules as ftmo
+from whale_sweep_leverage_table import leverage_for
 
 START_EQUITY = ftmo.START_EQUITY
 
@@ -175,7 +178,13 @@ def _kelly_fraction(r_multiples: np.ndarray, f_max_cap: float = 2.0) -> float:
 def build_candidate_data(row: dict, df_cache: dict) -> dict:
     """Real trade records, Kelly fraction, and a day -> ordered list of
     (timestamp, r_multiple) series (for merging across assets and for
-    daily-correlation computation)."""
+    daily-correlation computation). Also keeps a parallel `margin_trades`
+    list (entry ts, exit ts, stop distance, entry price) -- unscaled by
+    any risk_pct/k, since real margin depends on the risk-dollar amount
+    chosen for a given combo/k, which isn't known until simulate time.
+    This is what simulate_portfolio_margin_gated() below consumes; the
+    plain `trades` list and daily_series are untouched so the existing
+    unconstrained simulate_portfolio() keeps behaving exactly as before."""
     key = (row["asset"], row["entry_timeframe"])
     if key not in df_cache:
         df_cache[key] = ws.load_precomputed(*key)
@@ -184,10 +193,18 @@ def build_candidate_data(row: dict, df_cache: dict) -> dict:
     records = ws.get_trade_records(df, p)
 
     trades = []
+    margin_trades = []
     for r in records:
         ts = df.index[r["entry_idx"]]
         trades.append((ts, float(r["r_multiple"])))
+        if r["risk"] > 0:
+            margin_trades.append({
+                "entry_ts": ts, "exit_ts": df.index[r["exit_idx"]],
+                "r_multiple": float(r["r_multiple"]),
+                "stop_dist": float(r["risk"]), "entry_price": float(r["entry"]),
+            })
     trades.sort(key=lambda t: t[0])
+    margin_trades.sort(key=lambda t: t["entry_ts"])
 
     r_arr = np.array([r for _, r in trades], dtype=float)
     kelly_f = _kelly_fraction(r_arr) if len(r_arr) >= 30 else 0.0
@@ -199,8 +216,8 @@ def build_candidate_data(row: dict, df_cache: dict) -> dict:
 
     return {"label": f"{row['asset']}/{row['entry_timeframe']} ss={row.get('session_start_minutes')} "
                      f"(local_rank={row.get('local_rank')})",
-            "asset": row["asset"], "trades": trades, "kelly_f": kelly_f,
-            "n_trades": len(trades), "daily_series": daily_series}
+            "asset": row["asset"], "trades": trades, "margin_trades": margin_trades,
+            "kelly_f": kelly_f, "n_trades": len(trades), "daily_series": daily_series}
 
 
 def correlation_matrix(cand_data: list[dict]) -> pd.DataFrame:
@@ -250,15 +267,129 @@ def simulate_portfolio(combo: list[dict], k: float, challenge: str) -> dict:
             "median_days_to_pass": med_days}
 
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Margin-gated simulation (2026-09-20) -- optional, off by default
+# ══════════════════════════════════════════════════════════════════════════
+#
+# Added after the 2026-09-20 leverage/margin investigation (see
+# claude/handoff.md, "Leverage / margin" section, items 13-17) found:
+# (a) the plain simulate_portfolio() above has ZERO concept of margin --
+#     it works purely in already-realized dollar P&L, never checking
+#     whether a calculated position size is actually achievable within
+#     account equity at the instrument's real leverage cap; (b) real
+#     positions in this candidate pool DO overlap in clock time (every
+#     surviving candidate shares session_start_minutes=180); (c) a
+#     standalone check found that simply REFUSING to open a trade that
+#     would exceed a fixed margin capacity RAISES historical pass rate
+#     rather than costing it, because nearly all historical failures are
+#     daily_loss breaches from several positions stacking up and losing
+#     together, which margin-gating suppresses.
+#
+# Design choice: margin-gating is implemented as a pure PRE-FILTER on
+# which trades get included, applied before bucketing into per-day
+# dollar P&L -- ftmo_challenge_rules.py's actual PASS/FAIL walk
+# (run_phase / simulate_*_portfolio) is untouched and still just
+# consumes a day -> [dollar deltas] dict exactly as before. This keeps
+# the well-tested core simulation logic simple and reusable, and means
+# margin-gating can never change the OUTCOME of a trade that survives
+# the gate -- it can only remove trades entirely (skip, not resize).
+
+def _merge_trades_with_margin(combo: list[dict], k: float) -> list[dict]:
+    """Like _merge_by_date_dollars, but keeps each trade individually
+    (with its real entry/exit timestamps and margin requirement) instead
+    of collapsing straight to a by-date dollar sum -- the margin gate
+    needs entry/exit timing to know what's concurrently open."""
+    all_trades = []
+    for c in combo:
+        risk_amt = START_EQUITY * (k * c["kelly_f"])
+        lev = leverage_for(c["asset"])
+        for t in c["margin_trades"]:
+            position_size = risk_amt / t["stop_dist"]
+            margin = position_size * t["entry_price"] / lev
+            all_trades.append({
+                "entry_ts": t["entry_ts"], "exit_ts": t["exit_ts"],
+                "dollar_pnl": risk_amt * t["r_multiple"], "margin": margin,
+            })
+    all_trades.sort(key=lambda t: t["entry_ts"])
+    return all_trades
+
+
+def _margin_gate(all_trades: list[dict], capacity: float) -> tuple[list[dict], int]:
+    """Chronological accept/reject sweep: releases margin from positions
+    whose exit has passed, then accepts a new trade only if its margin
+    fits within whatever capacity remains. A rejected trade is skipped
+    entirely (never opened -- $0 P&L, never occupies margin), not
+    resized to fit. Returns (kept_trades, n_rejected)."""
+    heap: list[tuple] = []  # (exit_ts, margin)
+    used = 0.0
+    kept = []
+    n_rejected = 0
+    for t in all_trades:
+        while heap and heap[0][0] <= t["entry_ts"]:
+            _, m = heapq.heappop(heap)
+            used -= m
+        if used + t["margin"] <= capacity:
+            used += t["margin"]
+            heapq.heappush(heap, (t["exit_ts"], t["margin"]))
+            kept.append(t)
+        else:
+            n_rejected += 1
+    return kept, n_rejected
+
+
+def _bucket_by_date(trades: list[dict]) -> tuple[dict, list]:
+    by_date = defaultdict(list)
+    for t in trades:
+        by_date[t["entry_ts"].date()].append(t["dollar_pnl"])
+    all_days = sorted(by_date.keys())
+    return dict(by_date), all_days
+
+
+def simulate_portfolio_margin_gated(combo: list[dict], k: float, challenge: str,
+                                     capacity_frac: float) -> dict:
+    """Same weekly-Monday-cohort FTMO simulation as simulate_portfolio(),
+    but first drops any trade that would push combined margin (tracked
+    in aggregate across every leg in the combo, in real clock time --
+    this automatically also captures a single candidate having MULTIPLE
+    of its own positions open at once via allow_level_rearm, not just
+    cross-asset overlap) past capacity_frac * START_EQUITY."""
+    all_trades = _merge_trades_with_margin(combo, k)
+    capacity = START_EQUITY * capacity_frac
+    kept, n_rejected = _margin_gate(all_trades, capacity)
+    by_date, all_days = _bucket_by_date(kept)
+    if len(all_days) < 8:
+        return {"n_cohorts": 0, "n_trades_total": len(all_trades), "n_trades_rejected": n_rejected,
+                "capacity_frac": capacity_frac}
+    mondays = ftmo.get_mondays_full(all_days)
+    sim_fn = ftmo.simulate_2step_portfolio if challenge == "2step" else ftmo.simulate_1step_portfolio
+    outcomes = [sim_fn(by_date, all_days, start) for start in mondays]
+    n = len(outcomes)
+    n_pass = sum(1 for o in outcomes if o["outcome"] == "PASS")
+    n_fail = sum(1 for o in outcomes if o["outcome"] == "FAIL")
+    pass_days = sorted(o["calendar_days"] for o in outcomes if o["outcome"] == "PASS" and o["calendar_days"])
+    med_days = pass_days[len(pass_days) // 2] if pass_days else None
+    return {"n_cohorts": n, "n_pass": n_pass, "n_fail": n_fail,
+            "pass_pct": 100.0 * n_pass / n if n else None,
+            "still_going_pct": 100.0 * (n - n_pass - n_fail) / n if n else None,
+            "median_days_to_pass": med_days,
+            "n_trades_total": len(all_trades), "n_trades_rejected": n_rejected,
+            "capacity_frac": capacity_frac}
+
+
 def find_target_risk_levels(combo: list[dict], challenge: str, target_pct: float,
-                             tol_pct: float, k_grid: np.ndarray) -> list[dict]:
+                             tol_pct: float, k_grid: np.ndarray,
+                             sim_fn=simulate_portfolio) -> list[dict]:
     """Evaluates the k-grid, finds every sign change of (pass_pct -
     target) across consecutive grid points, and bisection-refines each
     one -- pass_pct vs risk is not monotonic (see module docstring), so
-    there can legitimately be zero, one, or two crossings."""
+    there can legitimately be zero, one, or two crossings. `sim_fn`
+    defaults to the unconstrained simulate_portfolio; pass
+    functools.partial(simulate_portfolio_margin_gated, capacity_frac=X)
+    to re-derive k under an explicit margin constraint instead (see
+    --margin-cap-frac in main())."""
     evals = []
     for k in k_grid:
-        res = simulate_portfolio(combo, k, challenge)
+        res = sim_fn(combo, k, challenge)
         evals.append((k, res))
 
     crossings = []
@@ -273,7 +404,7 @@ def find_target_risk_levels(combo: list[dict], challenge: str, target_pct: float
             lo, hi = k_lo, k_hi
             for _ in range(25):
                 mid = (lo + hi) / 2
-                res_mid = simulate_portfolio(combo, mid, challenge)
+                res_mid = sim_fn(combo, mid, challenge)
                 p_mid = res_mid.get("pass_pct")
                 if p_mid is None:
                     break
@@ -310,8 +441,26 @@ def main():
     ap.add_argument("--max-risk-pct", type=float, default=0.10,
                      help="Upper end of the average per-trade risk_pct swept per combo (default 10%%).")
     ap.add_argument("--k-grid-points", type=int, default=30)
+    ap.add_argument("--margin-cap-frac", type=float, default=None,
+                     help="If set, apply a margin gate at this fraction of starting equity "
+                          "(e.g. 0.8 for an 80%% cap) when simulating every combo, and re-derive "
+                          "k under that constraint instead of the unconstrained simulation. "
+                          "Requires a leverage figure for every asset in the pool -- see "
+                          "whale_sweep_leverage_table.py. Off by default (None) -- exactly "
+                          "reproduces prior behavior when omitted. See the 2026-09-20 "
+                          "'Leverage / margin' writeup in claude/handoff.md for why this exists "
+                          "and why a cap below 100%% (e.g. 0.8) was chosen over 1.0.")
     ap.add_argument("--out-csv", default="whale_sweep_output/portfolio_optimizer.csv")
     args = ap.parse_args()
+
+    if args.margin_cap_frac is not None:
+        sim_fn = functools.partial(simulate_portfolio_margin_gated, capacity_frac=args.margin_cap_frac)
+        print(f"Margin gate ACTIVE: capacity = {args.margin_cap_frac*100:.0f}% of starting equity "
+              f"(${START_EQUITY * args.margin_cap_frac:,.0f}). Every combo's k-grid search below is "
+              f"re-derived under this constraint -- pass_pct/median_days_to_pass are NOT directly "
+              f"comparable to a run without --margin-cap-frac.")
+    else:
+        sim_fn = simulate_portfolio
 
     pool_raw = load_candidate_pool(args.screen_csv, args.top_json)
     pool = filter_and_dedup(pool_raw, args.min_ww_n)
@@ -370,9 +519,10 @@ def main():
             # fractions are.
             mean_kelly = float(np.mean([c["kelly_f"] for c in combo]))
             k_grid = np.geomspace(args.min_risk_pct / mean_kelly, args.max_risk_pct / mean_kelly, args.k_grid_points)
-            crossings = find_target_risk_levels(combo, args.challenge, args.target_pass_pct, args.tol_pct, k_grid)
+            crossings = find_target_risk_levels(combo, args.challenge, args.target_pass_pct, args.tol_pct,
+                                                 k_grid, sim_fn=sim_fn)
             for cr in crossings:
-                results.append({
+                row_out = {
                     "size": size, "assets": "+".join(sorted(c["asset"] for c in combo)),
                     "labels": " | ".join(c["label"] for c in combo),
                     "avg_pairwise_corr": round(avg_corr, 3) if avg_corr is not None else None,
@@ -382,7 +532,14 @@ def main():
                     "median_days_to_pass": cr.get("median_days_to_pass"),
                     "n_cohorts": cr.get("n_cohorts"),
                     "per_asset_risk_pct": {c["asset"]: round(float(100 * cr["k"] * c["kelly_f"]), 3) for c in combo},
-                })
+                }
+                if args.margin_cap_frac is not None:
+                    n_total, n_rej = cr.get("n_trades_total"), cr.get("n_trades_rejected")
+                    row_out["margin_cap_frac"] = args.margin_cap_frac
+                    row_out["n_trades_total"] = n_total
+                    row_out["n_trades_rejected"] = n_rej
+                    row_out["pct_trades_rejected"] = round(100.0 * n_rej / n_total, 1) if n_total else None
+                results.append(row_out)
         if combos_tried >= args.max_combos:
             print(f"  hit --max-combos={args.max_combos} cap, stopping the search early")
             break
