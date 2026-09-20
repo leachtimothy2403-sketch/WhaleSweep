@@ -154,8 +154,11 @@ def discover_asset_timeframes() -> List[tuple[str, str]]:
     restrict = os.environ.get("WS_ASSETS")
     allowed = {a.strip() for a in restrict.split(",")} if restrict else None
     out = []
-    for f in sorted(glob.glob("ws_precomputed_*.parquet")):
-        m = re.match(r"ws_precomputed_(.+)_(1min|3min|5min)\.parquet$", f)
+    # Look for files in current directory, and also check parent if run from a sub-directory.
+    files = glob.glob("ws_precomputed_*.parquet") + glob.glob("../ws_precomputed_*.parquet")
+    for f in sorted(set(files)):
+        f_name = os.path.basename(f)
+        m = re.match(r"ws_precomputed_(.+)_(1min|3min|5min)\.parquet$", f_name)
         if m and (allowed is None or m.group(1) in allowed):
             out.append((m.group(1), m.group(2)))
     return out
