@@ -155,12 +155,15 @@ def discover_asset_timeframes() -> List[tuple[str, str]]:
     allowed = {a.strip() for a in restrict.split(",")} if restrict else None
     out = []
     # Look for files in current directory, and also check parent if run from a sub-directory.
-    files = glob.glob("ws_precomputed_*.parquet") + glob.glob("../ws_precomputed_*.parquet")
+    search_pattern = "ws_precomputed_*.parquet"
+    files = glob.glob(search_pattern) + glob.glob("../" + search_pattern)
+    print(f"[DEBUG] glob found {len(files)} files: {files}", flush=True)
     for f in sorted(set(files)):
         f_name = os.path.basename(f)
         m = re.match(r"ws_precomputed_(.+)_(1min|3min|5min)\.parquet$", f_name)
         if m and (allowed is None or m.group(1) in allowed):
             out.append((m.group(1), m.group(2)))
+    print(f"[DEBUG] discovered assets: {out}", flush=True)
     return out
 
 
