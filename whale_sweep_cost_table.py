@@ -70,4 +70,18 @@ COST_TABLE: Dict[str, float] = {
     # European/US indices above -- do not mistake this for a worse
     # relative cost.
     "JPN225": 8.0,
+
+    # UNVERIFIED placeholder for MNQ (Micro Nasdaq-100 futures), added
+    # 2026-09-23 for the NASDAQ-futures search (see precompute_mnq.py).
+    # Derived, not measured: Tradeify's MNQ commission is $1.82/contract
+    # round-turn -> at MNQ's $2/point value that's ~0.91 points. Slippage
+    # isn't separately known for MNQ, so this borrows Tim's own real-money
+    # calibration from a DIFFERENT strategy (nq_2yr_fixed_config.py's
+    # NQ_COST_FULL=0.95 points for full-size NQ) by backing out its implied
+    # slippage component: NQ's own commission is $5.76/contract / $20/pt =
+    # 0.288 pts, so 0.95 - 0.288 = ~0.66 pts of slippage. Adding that same
+    # slippage (same underlying price feed/liquidity) to MNQ's own
+    # commission: 0.91 + 0.66 = ~1.57 points. Replace with a real measured
+    # figure (fill quality differs somewhat between micro and full contracts).
+    "MNQ": 1.57,
 }
