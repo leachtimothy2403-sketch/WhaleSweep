@@ -95,24 +95,31 @@ print(f"Data spans {all_days[0]} .. {last_day} ({len(mondays_all)} total weekly 
       f"last {N_MONTHS} months -> {len(mondays)} cohorts from {mondays[0]} to {mondays[-1]}")
 
 
-def run_phase_detailed(days, target_equity, fail_equity, daily_loss_limit, min_days):
+def run_phase_detailed(days, target_equity, fail_equity, daily_loss_limit, min_days, lockin_scale=None):
     """Mirrors ftmo_challenge_rules.run_phase() EXACTLY (risk_amt=1.0,
-    trailing_max_loss=False path, max_concurrent=None), but returns a
-    full day-by-day / trade-by-trade trace instead of just final stats."""
+    trailing_max_loss=False path, max_concurrent=None, including the
+    2026-09-23 lockin_scale tactic -- see its docstring there), but
+    returns a full day-by-day / trade-by-trade trace instead of just
+    final stats."""
     equity = START_EQUITY
     day_records = []
     outcome, reason, last_idx = "STILL_GOING", None, len(days) - 1
+    locked_in = False
     for i, day in enumerate(days):
         day_start_equity = equity
         trades_today = []
         day_outcome = None
         for t in by_date_detail[day]:
-            equity += t["dollar_pnl"]
+            delta = t["dollar_pnl"]
+            was_locked_in = locked_in
+            if locked_in:
+                delta = delta * lockin_scale
+            equity += delta
             trades_today.append({
                 "asset": t["asset"], "label": t["label"], "direction": t.get("direction"),
                 "entry_ts": t["entry_ts"].isoformat(), "exit_ts": t["exit_ts"].isoformat(),
-                "r_multiple": t["r_multiple"], "dollar_pnl": t["dollar_pnl"],
-                "balance_after": equity,
+                "r_multiple": t["r_multiple"], "dollar_pnl": delta, "raw_dollar_pnl": t["dollar_pnl"],
+                "scaled": was_locked_in, "balance_after": equity,
             })
             days_used = i + 1
             if equity <= fail_equity:
@@ -127,11 +134,14 @@ def run_phase_detailed(days, target_equity, fail_equity, daily_loss_limit, min_d
                 outcome, reason, last_idx = "PASS", None, i
                 day_outcome = ("PASS", None)
                 break
+            if lockin_scale is not None and not locked_in and equity >= target_equity:
+                locked_in = True
         day_records.append({
             "date": str(day), "day_start_equity": day_start_equity,
             "trades": trades_today, "day_end_equity": equity,
             "day_outcome": day_outcome[0] if day_outcome else None,
             "day_reason": day_outcome[1] if day_outcome else None,
+            "locked_in_after": locked_in,
         })
         if day_outcome:
             break
@@ -141,10 +151,10 @@ def run_phase_detailed(days, target_equity, fail_equity, daily_loss_limit, min_d
             "end_equity": equity, "days_used": len(day_records), "day_records": day_records}
 
 
-def run_cohort(start):
+def run_cohort(start, lockin_scale=None):
     days = ftmo.walk_days(by_date_detail, all_days, start)
     p1 = run_phase_detailed(days, target_equity=110_000.0, fail_equity=90_000.0,
-                             daily_loss_limit=5_000.0, min_days=4)
+                             daily_loss_limit=5_000.0, min_days=4, lockin_scale=lockin_scale)
     result = {"cohort_start": str(start), "phase1": p1}
     if p1["outcome"] != "PASS":
         result["outcome"] = p1["outcome"]
@@ -163,7 +173,7 @@ def run_cohort(start):
         return result
 
     p2 = run_phase_detailed(phase2_days, target_equity=105_000.0, fail_equity=90_000.0,
-                             daily_loss_limit=5_000.0, min_days=4)
+                             daily_loss_limit=5_000.0, min_days=4, lockin_scale=lockin_scale)
     result["phase2"] = p2
     result["outcome"] = p2["outcome"]
     result["reason"] = p2["reason"]
@@ -175,18 +185,24 @@ def run_cohort(start):
     return result
 
 
-cohorts_out = [run_cohort(m) for m in mondays]
-for co in cohorts_out:
-    print(co["cohort_start"], co["outcome"], co.get("reason"), "end_eq=", round(co["end_equity"], 0),
-          "cal_days=", co.get("calendar_days"))
+LOCKIN_SCALE = 0.0  # "lowest possible risk" once a phase target is first exceeded -- see run_phase()'s docstring
+
+cohorts_baseline = [run_cohort(m, lockin_scale=None) for m in mondays]
+cohorts_lockin = [run_cohort(m, lockin_scale=LOCKIN_SCALE) for m in mondays]
+for cb, cl in zip(cohorts_baseline, cohorts_lockin):
+    print(cb["cohort_start"], "baseline:", cb["outcome"], cb.get("reason"), "end_eq=", round(cb["end_equity"], 0),
+          "cal_days=", cb.get("calendar_days"), "  |  lockin:", cl["outcome"], cl.get("reason"),
+          "end_eq=", round(cl["end_equity"], 0), "cal_days=", cl.get("calendar_days"))
 
 out = {
     "combo_labels": [c["label"] for c in combo],
     "k_used": K, "capacity_frac": CAPACITY_FRAC, "start_equity": START_EQUITY,
+    "lockin_scale": LOCKIN_SCALE,
     "n_trades_total": len(all_trades), "n_trades_rejected": n_rejected,
     "data_range": [str(all_days[0]), str(all_days[-1])],
-    "n_cohorts_total": len(mondays_all), "cohorts": cohorts_out,
+    "n_cohorts_total": len(mondays_all),
+    "cohorts_baseline": cohorts_baseline, "cohorts_lockin": cohorts_lockin,
 }
 with open(OUT_PATH, "w", encoding="utf-8") as f:
     json.dump(out, f, indent=1)
-print(f"Wrote {OUT_PATH} ({len(cohorts_out)} cohorts)")
+print(f"Wrote {OUT_PATH} ({len(cohorts_baseline)} cohorts x2)")

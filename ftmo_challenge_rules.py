@@ -158,7 +158,7 @@ def rolling_worst_window_pass_rate(mondays, outcomes, window_months=ROLLING_WIND
 
 def run_phase(by_date, days, risk_amt, target_equity, daily_loss_limit, min_days,
               max_loss_buffer=None, fail_equity=None, trailing_max_loss=False,
-              start_equity=START_EQUITY, max_concurrent=None):
+              start_equity=START_EQUITY, max_concurrent=None, lockin_scale=None):
     """Runs day-by-day through `days` (real historical trading days, each
     guaranteed >=1 trade by construction of by_date). Returns
     (outcome, reason, n_days_used, n_trades, end_equity, last_day_index)
@@ -181,10 +181,36 @@ def run_phase(by_date, days, risk_amt, target_equity, daily_loss_limit, min_days
     None/uncapped) - `None` (default) means uncapped, so any EXISTING
     caller that never passed this stays byte-for-byte identical.
     Remaining same-day signals beyond the cap are skipped entirely
-    (equity untouched by them), same semantics as simulate_1step_capped."""
+    (equity untouched by them), same semantics as simulate_1step_capped.
+
+    lockin_scale (2026-09-23, per Tim: several cohorts cleared the phase
+    target on day 1 at full risk, then gave the whole excess back --
+    and occasionally the daily-loss/max-loss floor too -- over the
+    following days before min_days was satisfied, e.g. a cohort that
+    was already >$110k after day 1 but ultimately FAILED on daily_loss
+    days later). `None` (default) is the original always-full-risk
+    behavior, byte-identical to every existing caller. Set it to a
+    scale in [0, 1) to arm the tactic: the FIRST time equity reaches
+    target_equity (regardless of whether min_days has been met yet),
+    every trade from that point on has its dollar P&L multiplied by
+    lockin_scale instead of 1.0 -- i.e. deliberately trade at (or near)
+    the smallest size that still counts as "trading that day" for
+    min_days purposes, to hold the cushion above target rather than
+    keep it at risk for gains the challenge no longer needs. 0.0 is the
+    literal floor (stop taking on any further P&L at all once locked
+    in -- the closest a backtest can get to "the lowest possible risk";
+    a live EA would express this as skipping new entries, or sizing
+    them down to a broker's minimum lot). This can only ever help or be
+    neutral for PASS/FAIL outcomes reached while still locked in at
+    full-size-equivalent equity, since day-count/min_days accounting is
+    unaffected (see below) -- it does NOT change which days are in
+    `days` (that's fixed by the real trade tape), only how much of a
+    LATER day's real P&L gets applied once already sitting on the
+    cushion."""
     equity = start_equity
     high_water_mark = start_equity
     n_trades = 0
+    locked_in = False
     for i, day in enumerate(days):
         day_start_equity = equity
         if trailing_max_loss:
@@ -196,7 +222,10 @@ def run_phase(by_date, days, risk_amt, target_equity, daily_loss_limit, min_days
         for r in by_date[day]:
             if max_concurrent is not None and n_taken_today >= max_concurrent:
                 break
-            equity += risk_amt * r
+            delta = risk_amt * r
+            if locked_in:
+                delta *= lockin_scale
+            equity += delta
             n_taken_today += 1
             n_trades += 1
             days_used = i + 1
@@ -206,6 +235,8 @@ def run_phase(by_date, days, risk_amt, target_equity, daily_loss_limit, min_days
                 return "FAIL", "daily_loss", days_used, n_trades, equity, i
             if equity >= target_equity and days_used >= min_days:
                 return "PASS", None, days_used, n_trades, equity, i
+            if lockin_scale is not None and not locked_in and equity >= target_equity:
+                locked_in = True
     return "STILL_GOING", None, len(days), n_trades, equity, len(days) - 1
 
 
@@ -290,29 +321,36 @@ def simulate_2step(by_date, all_days, start, risk_pct, min_days=4, max_concurren
 # long to pass" reader actually wants).
 
 
-def simulate_1step_portfolio(by_date_dollars, all_days, start, max_concurrent=None):
+def simulate_1step_portfolio(by_date_dollars, all_days, start, max_concurrent=None, lockin_scale=None):
     """Multi-asset generalization of simulate_1step. by_date_dollars
     values are already-scaled DOLLAR P&L per trade (each asset's own
     risk_pct baked in before merging), not R-multiples times a single
-    risk_pct — see the module-level comment above this section."""
+    risk_pct — see the module-level comment above this section.
+    lockin_scale: see run_phase()'s own docstring."""
     days = walk_days(by_date_dollars, all_days, start)
     outcome, reason, n_days, n_trades, end_equity, last_idx = run_phase(
         by_date_dollars, days, risk_amt=1.0, target_equity=110_000.0,
         max_loss_buffer=10_000.0, trailing_max_loss=True,
-        daily_loss_limit=3_000.0, min_days=1, max_concurrent=max_concurrent)
+        daily_loss_limit=3_000.0, min_days=1, max_concurrent=max_concurrent,
+        lockin_scale=lockin_scale)
     calendar_days = (days[last_idx] - start).days + 1 if 0 <= last_idx < len(days) else None
     return {"outcome": outcome, "reason": reason, "days": n_days, "calendar_days": calendar_days,
             "trades": n_trades, "end_equity": end_equity}
 
 
-def simulate_2step_portfolio(by_date_dollars, all_days, start, min_days=4, max_concurrent=None):
+def simulate_2step_portfolio(by_date_dollars, all_days, start, min_days=4, max_concurrent=None, lockin_scale=None):
     """Multi-asset generalization of simulate_2step — see the
     module-level comment above this section for why by_date_dollars
-    holds pre-scaled dollar P&L instead of raw R-multiples."""
+    holds pre-scaled dollar P&L instead of raw R-multiples.
+    lockin_scale: see run_phase()'s own docstring -- applied
+    independently within EACH phase (Phase 2 starts back at
+    locked_in=False, since it has its own separate target and its own
+    equity reset)."""
     days = walk_days(by_date_dollars, all_days, start)
     o1, r1, d1, t1, eq1, last_idx1 = run_phase(
         by_date_dollars, days, risk_amt=1.0, target_equity=110_000.0, fail_equity=90_000.0,
-        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent)
+        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent,
+        lockin_scale=lockin_scale)
     if o1 != "PASS":
         calendar_days = (days[last_idx1] - start).days + 1 if 0 <= last_idx1 < len(days) else None
         return {"outcome": o1, "phase": 1, "reason": r1, "days": d1, "calendar_days": calendar_days,
@@ -322,7 +360,8 @@ def simulate_2step_portfolio(by_date_dollars, all_days, start, min_days=4, max_c
     phase2_days = days[last_idx1 + 1:]
     o2, r2, d2, t2, eq2, last_idx2 = run_phase(
         by_date_dollars, phase2_days, risk_amt=1.0, target_equity=105_000.0, fail_equity=90_000.0,
-        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent)
+        daily_loss_limit=5_000.0, min_days=min_days, max_concurrent=max_concurrent,
+        lockin_scale=lockin_scale)
     calendar_days = ((phase2_days[last_idx2] - start).days + 1) if 0 <= last_idx2 < len(phase2_days) else None
     return {"outcome": o2, "phase": 2, "reason": r2, "days": d1 + d2, "days_p1": d1, "days_p2": d2,
             "calendar_days": calendar_days, "trades": t1 + t2, "end_equity": eq2}

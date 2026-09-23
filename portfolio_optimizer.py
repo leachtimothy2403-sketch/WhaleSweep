@@ -249,13 +249,13 @@ def _merge_by_date_dollars(combo: list[dict], k: float) -> tuple[dict, list]:
     return dict(by_date), all_days
 
 
-def simulate_portfolio(combo: list[dict], k: float, challenge: str) -> dict:
+def simulate_portfolio(combo: list[dict], k: float, challenge: str, lockin_scale: float | None = None) -> dict:
     by_date, all_days = _merge_by_date_dollars(combo, k)
     if len(all_days) < 8:
         return {"n_cohorts": 0}
     mondays = ftmo.get_mondays_full(all_days)
     sim_fn = ftmo.simulate_2step_portfolio if challenge == "2step" else ftmo.simulate_1step_portfolio
-    outcomes = [sim_fn(by_date, all_days, start) for start in mondays]
+    outcomes = [sim_fn(by_date, all_days, start, lockin_scale=lockin_scale) for start in mondays]
     n = len(outcomes)
     n_pass = sum(1 for o in outcomes if o["outcome"] == "PASS")
     n_fail = sum(1 for o in outcomes if o["outcome"] == "FAIL")
@@ -346,13 +346,17 @@ def _bucket_by_date(trades: list[dict]) -> tuple[dict, list]:
 
 
 def simulate_portfolio_margin_gated(combo: list[dict], k: float, challenge: str,
-                                     capacity_frac: float) -> dict:
+                                     capacity_frac: float, lockin_scale: float | None = None) -> dict:
     """Same weekly-Monday-cohort FTMO simulation as simulate_portfolio(),
     but first drops any trade that would push combined margin (tracked
     in aggregate across every leg in the combo, in real clock time --
     this automatically also captures a single candidate having MULTIPLE
     of its own positions open at once via allow_level_rearm, not just
-    cross-asset overlap) past capacity_frac * START_EQUITY."""
+    cross-asset overlap) past capacity_frac * START_EQUITY.
+
+    lockin_scale (2026-09-23, per Tim): passed straight through to
+    ftmo_challenge_rules.run_phase() -- see its docstring. `None`
+    (default) keeps this byte-identical to every existing caller."""
     all_trades = _merge_trades_with_margin(combo, k)
     capacity = START_EQUITY * capacity_frac
     kept, n_rejected = _margin_gate(all_trades, capacity)
@@ -362,7 +366,7 @@ def simulate_portfolio_margin_gated(combo: list[dict], k: float, challenge: str,
                 "capacity_frac": capacity_frac}
     mondays = ftmo.get_mondays_full(all_days)
     sim_fn = ftmo.simulate_2step_portfolio if challenge == "2step" else ftmo.simulate_1step_portfolio
-    outcomes = [sim_fn(by_date, all_days, start) for start in mondays]
+    outcomes = [sim_fn(by_date, all_days, start, lockin_scale=lockin_scale) for start in mondays]
     n = len(outcomes)
     n_pass = sum(1 for o in outcomes if o["outcome"] == "PASS")
     n_fail = sum(1 for o in outcomes if o["outcome"] == "FAIL")
