@@ -50,4 +50,24 @@ COST_TABLE: Dict[str, float] = {
     "BTCUSD": 5.0,
     # UNVERIFIED -- see module docstring. Not broker-measured.
     "AAPL":   0.30,
+
+    # UNVERIFIED placeholders added 2026-09-23 for the 7-asset expansion
+    # (Tim's request, see precompute.py) -- rough analyst-judgment
+    # figures based on typical retail CFD spreads for each instrument
+    # class, NOT broker-measured. The patched RCTBE/_measure_ftmo_costs.py
+    # already probes AUDUSD/USDJPY/USDCAD/FRA40.cash/UK100.cash on the
+    # live FTMO-Demo MT5 terminal -- replace these five the moment that
+    # comes back. XAGUSD and JPN225(.cash) were added to that script's
+    # SYMBOLS list too but hadn't been run as of this commit.
+    "AUDUSD": 0.00012,
+    "USDCAD": 0.00015,
+    "USDJPY": 0.012,
+    "XAGUSD": 0.03,
+    "FRA40":  2.5,
+    "UK100":  2.5,
+    # Nikkei's much higher absolute price level (~30-40k) means its
+    # typical retail CFD spread in raw points is much larger than the
+    # European/US indices above -- do not mistake this for a worse
+    # relative cost.
+    "JPN225": 8.0,
 }

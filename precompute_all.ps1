@@ -17,7 +17,11 @@
 $ErrorActionPreference = "Stop"
 
 $assets = @(
-    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40","BTCUSD"
+    "EURUSD","GBPUSD","XAUUSD","NDX100","SPX500","US30","AAPL","GER40","BTCUSD",
+    # Added 2026-09-23 per Tim, from the VPS Dukascopy cache listing --
+    # see precompute.py's FOREX_ASSETS/METAL_ASSETS/INDEX_ASSETS docstrings
+    # for why these 7 specifically were picked.
+    "AUDUSD","USDJPY","USDCAD","XAGUSD","FRA40","UK100","JPN225"
 )
 
 foreach ($a in $assets) {

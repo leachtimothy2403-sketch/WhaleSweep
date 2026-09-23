@@ -73,24 +73,42 @@ DUKASCOPY_CACHE_ROOT = Path(
 NY_TZ = "America/New_York"
 
 # ── Forex majors — Dukascopy folder name == asset name. ──
-FOREX_ASSETS = {"EURUSD": "EURUSD", "GBPUSD": "GBPUSD"}
-PLAUSIBLE_RANGE_FOREX = {"EURUSD": (0.7, 1.7), "GBPUSD": (0.9, 2.2)}
+# AUDUSD/USDJPY/USDCAD added 2026-09-23 per Tim, from the VPS's own
+# Dukascopy cache listing (C:/Users/Administrator/RCTBE/data/dukascopy) --
+# chosen as the forex majors most similar in character to EURUSD/GBPUSD,
+# which already produced real candidates in the 6-year search.
+FOREX_ASSETS = {"EURUSD": "EURUSD", "GBPUSD": "GBPUSD", "AUDUSD": "AUDUSD",
+                 "USDJPY": "USDJPY", "USDCAD": "USDCAD"}
+PLAUSIBLE_RANGE_FOREX = {"EURUSD": (0.7, 1.7), "GBPUSD": (0.9, 2.2),
+                          "AUDUSD": (0.4, 1.2), "USDJPY": (60, 200), "USDCAD": (0.8, 1.8)}
 
 # ── Metals — same naming convention as forex. ──
-METAL_ASSETS = {"XAUUSD": "XAUUSD"}
-PLAUSIBLE_RANGE_METAL = {"XAUUSD": (800, 6000)}
+# XAGUSD (silver) added 2026-09-23 -- closest analog to XAUUSD, which
+# already produced (moderate) real candidates.
+METAL_ASSETS = {"XAUUSD": "XAUUSD", "XAGUSD": "XAGUSD"}
+PLAUSIBLE_RANGE_METAL = {"XAUUSD": (800, 6000), "XAGUSD": (5, 80)}
 
 # ── Indices — identical mapping to MeanReversion's INDEX_ASSETS. ──
 # GER40 (DAX) added back 2026-09-19 per Tim -- confirmed ~10yr history
 # on both the local laptop cache and the VPS (partially precomputed
 # there already, before the disk-full incident -- see git history).
+# FRA40/UK100/JPN225 added 2026-09-23 per Tim -- other major equity
+# indices, the asset class that has produced the STRONGEST candidates
+# so far (GER40/NDX100 dominate the top of the screening table).
+# CAVEAT: JPN225 (Nikkei) trades its own Tokyo session, not NY/London --
+# this strategy's session-anchor logic (PDH/PDL relative to the NY
+# trading day, entries anchored to NY-session opens) was tuned against
+# NY/London-hours instruments. A weak or empty JPN225 result may reflect
+# that mismatch rather than a real absence of edge -- don't read a
+# JPN225 gate2 FAIL the same way as e.g. AAPL's.
 INDEX_ASSETS = {
     "NDX100": "USATECHIDXUSD", "SPX500": "USA500IDXUSD", "US30": "USA30IDXUSD",
-    "GER40": "DEUIDXEUR",
+    "GER40": "DEUIDXEUR", "FRA40": "FRAIDXEUR", "UK100": "GBRIDXGBP", "JPN225": "JPNIDXJPY",
 }
 PLAUSIBLE_RANGE_INDEX = {
     "NDX100": (5_000, 40_000), "SPX500": (1_500, 10_000), "US30": (10_000, 60_000),
-    "GER40": (5_000, 35_000),
+    "GER40": (5_000, 35_000), "FRA40": (2_000, 12_000), "UK100": (3_000, 12_000),
+    "JPN225": (10_000, 60_000),
 }
 
 # ── Crypto ──

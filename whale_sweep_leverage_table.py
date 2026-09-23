@@ -38,6 +38,25 @@ LEVERAGE_TABLE: Dict[str, float] = {
     "XAUUSD": 30.0,
     # UNVERIFIED -- see module docstring.
     "AAPL": 5.0,
+
+    # Added 2026-09-23 for the 7-asset expansion (see precompute.py) --
+    # same asset-class caps as above, per the docstring's "Forex up to
+    # 1:100 / indices up to 1:50 / metals up to 1:30" summary. Not
+    # independently re-confirmed against FTMO's own page for these
+    # specific symbols any more than the originals were.
+    "AUDUSD": 100.0,
+    "USDJPY": 100.0,
+    "USDCAD": 100.0,
+    "XAGUSD": 30.0,
+    "FRA40": 50.0,
+    "UK100": 50.0,
+    "JPN225": 50.0,
+    # UNVERIFIED, rougher than the rest of this table -- FTMO's crypto
+    # leverage cap wasn't confirmed anywhere during the BTCUSD cost
+    # research (2026-09-23), and prop/retail crypto caps commonly run
+    # much lower than FX (often 1:2-1:5). Get the real figure before
+    # trusting a BTCUSD margin-gated result.
+    "BTCUSD": 2.0,
 }
 
 
