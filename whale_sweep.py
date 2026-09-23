@@ -132,6 +132,13 @@ MIN_TRADES_PER_WEEK = float(os.environ.get("WS_MIN_TRADES_PER_WEEK", "2.0"))
 RNG = np.random.default_rng()
 
 
+# 2026-09-24: optional timeframe restriction, e.g. WS_TIMEFRAMES=3min,5min
+# (the futures search excludes 1min -- CFD 1min wicks don't transfer to
+# futures, see claude/dax_cfd_vs_futures.md). Unset = all three, unchanged.
+if os.environ.get("WS_TIMEFRAMES"):
+    SPACE["entry_timeframe"] = [t.strip() for t in os.environ["WS_TIMEFRAMES"].split(",") if t.strip()]
+
+
 def sample_params(rng: np.random.Generator = RNG) -> dict:
     p = {k: rng.choice(v) if not isinstance(v[0], bool) else bool(rng.choice(v)) for k, v in SPACE.items()}
     # normalize numpy scalar types to plain python for clean JSON/CSV output
@@ -455,7 +462,12 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
                     continue
                 if state != "armed":
                     continue
-                swept = (side == "upside" and hi_ > val) or (side == "downside" and lo_ < val)
+                # Optional minimum sweep margin (2026-09-24, CFD-vs-futures
+                # robustness): a level only counts as swept if price goes
+                # past it by sweep_min_margin_atr * ATR. Not a SPACE key;
+                # default 0.0 reproduces the original behavior exactly.
+                m_ = p.get("sweep_min_margin_atr", 0.0) * atr[i] if p.get("sweep_min_margin_atr", 0.0) else 0.0
+                swept = (side == "upside" and hi_ > val + m_) or (side == "downside" and lo_ < val - m_)
                 if not swept:
                     continue
                 lv[3] = "await_rearm" if p["allow_level_rearm"] else "used"

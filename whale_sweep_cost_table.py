@@ -98,4 +98,24 @@ COST_TABLE: Dict[str, float] = {
     # than the original 1.57 (which borrowed an unrelated strategy's
     # slippage calibration).
     "MNQ": 1.16,
+
+    # Futures via Tradeify, added 2026-09-24. Same bottom-up method as MNQ:
+    # Tradeify's published round-trip commission per contract
+    # (help.tradeify.co "Trading Commission Fees", checked 2026-09-24)
+    # divided by the contract's point value, plus ONE tick for spread /
+    # slippage. Units are raw price units, like every other entry.
+    #   6E  (Euro FX, CME): $6.20 RT / $125,000 per 1.0 = 0.0000496
+    #       + 1 tick 0.00005                              = 0.0000996
+    #       NOTE: this is MORE than the FTMO EURUSD CFD figure (0.00007) --
+    #       FX futures are not cheaper than a raw-spread FX CFD. (M6E is
+    #       worse still: $1.60/$12,500 + 0.0001 tick = 0.000228.)
+    #   FDXM (Mini-DAX, Eurex): EUR 3.72 RT / EUR 5 per point = 0.744 pts
+    #       + 1 tick (1.0 pt)                             = 1.744 pts
+    #       (vs GER40 CFD 3.39). FDAX would be 5.94/25 + 1 = 1.24 pts but
+    #       its EUR 25/pt size is too coarse for ~$1k risk sizing; FDXS
+    #       would be 1.42/1 + 1 = 2.42 pts.
+    #   FDXM is searched on GER40 CFD price data (Databento's Eurex history
+    #   only starts 2025-03) -- see claude/dax_cfd_vs_futures.md.
+    "6E":   0.0000996,
+    "FDXM": 1.744,
 }
