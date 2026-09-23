@@ -42,3 +42,5 @@ __pycache__/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+_mnq_df1m_cache_*.parquet
+_mnq_daily_cache_*.parquet
