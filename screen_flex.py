@@ -15,7 +15,8 @@ candidates already in it, so it can be driven in short chunks.
     WS_HISTORY_YEARS=6 py -3 screen_flex.py whale_sweep_output_mnq_6yr/results.csv flex_screen_mnq.csv
     WS_HISTORY_YEARS=6 py -3 screen_flex.py whale_sweep_output_futures/results.csv flex_screen_futures.csv
 Options (env): FLEX_MAX_SECONDS (stop after N s, default 0 = no limit),
-               FLEX_TIMEFRAMES (default all), FLEX_RISKS (default 500,750,1000,1250,1500)
+               FLEX_TIMEFRAMES (default all), FLEX_RISKS (default 500,750,1000,1250,1500),
+               FLEX_SHARD (k/n), FLEX_DONE_GLOB, FLEX_TOP_PER_GROUP (best N by score per asset/tf)
 """
 import os
 import sys
@@ -58,6 +59,10 @@ def main(pool_path, out_path):
     if TFS:
         pool = pool[pool["entry_timeframe"].isin(TFS.split(","))]
     pool = pool[pool["asset"].isin(CONTRACTS)]
+    top_n = int(os.environ.get("FLEX_TOP_PER_GROUP", "0"))   # keep best N by search score per (asset, tf)
+    if top_n:
+        pool = (pool.sort_values("score", ascending=False)
+                    .groupby(["asset", "entry_timeframe"], group_keys=False).head(top_n))
     shard = os.environ.get("FLEX_SHARD")          # e.g. "0/2": run every 2nd candidate
     if shard:
         k, n = map(int, shard.split("/"))
