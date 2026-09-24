@@ -10,12 +10,12 @@
 # share the VPS with the CFD search.
 #
 # Usage (from the WhaleSweep folder):
-#   .\start_search_futures.ps1                       # 100,000 iterations
-#   .\start_search_futures.ps1 -Iterations 50000
+#   .\start_search_futures2.ps1                       # 100,000 iterations
+#   .\start_search_futures2.ps1 -Iterations 50000
 # Progress:
 #   Get-Content run_futures2_console.log -Tail 20 -Wait
 # Stop:
-#   Stop-Process -Id (Get-Content whale_sweep_output_futures\pid.txt)
+#   Stop-Process -Id (Get-Content whale_sweep_output_futures2\pid.txt)
 
 param(
     [int]$Iterations = 100000,
