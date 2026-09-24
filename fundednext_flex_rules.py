@@ -24,6 +24,7 @@ trading the instant the (possibly raised) target and min days are met.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 import ftmo_challenge_rules as ftmo
 import tradeify_challenge_rules as tr
@@ -37,13 +38,20 @@ MAX_CONTRACTS_MNQ = 50
 
 
 def run_flex(by_date, days, min_days=1, lock_level=LOCK_LEVEL, consistency=CONSISTENCY,
-             profit_target=PROFIT_TARGET, mll=MLL):
+             profit_target=PROFIT_TARGET, mll=MLL, day_profit_cap=None, day_loss_stop=None):
+    """day_profit_cap / day_loss_stop are optional BOT-side overlays (not
+    firm rules): stop opening new trades for the rest of the day once the
+    day's closed P&L is >= day_profit_cap or <= -day_loss_stop."""
     equity, eod_high, best_day = START_EQUITY, START_EQUITY, 0.0
     target_raised = False
     for i, day in enumerate(days):
         floor = min(eod_high - mll, lock_level)
         day_start = equity
         for r in by_date[day]:
+            if day_profit_cap is not None and equity - day_start >= day_profit_cap:
+                break
+            if day_loss_stop is not None and equity - day_start <= -day_loss_stop:
+                break
             equity += r
             if equity <= floor:
                 return "FAIL", "max_loss", i, target_raised
@@ -62,18 +70,29 @@ def run_flex(by_date, days, min_days=1, lock_level=LOCK_LEVEL, consistency=CONSI
     return "STILL_GOING", None, len(days) - 1, target_raised
 
 
-def simulate_flex(records, df, risk_dollars, min_days=1, **kw):
+def simulate_flex(records, df, risk_dollars, min_days=1, point_value=2.0,
+                  max_contracts=MAX_CONTRACTS_MNQ, start_from=None, start_before=None, **kw):
+    """start_from / start_before (datetime.date) restrict which Monday cohorts
+    are run -- used for in-sample vs out-of-sample splits."""
     by_date, all_days, contracts = tr.size_trades_mnq(records, df, risk_dollars,
-                                                      max_contracts=MAX_CONTRACTS_MNQ)
+                                                      max_contracts=max_contracts,
+                                                      point_value=point_value)
+    if len(all_days) < 8:
+        return {"cohorts": 0}
     out = []
     for start in ftmo.get_mondays_full(all_days):
+        sd = pd.Timestamp(start).date()
+        if start_from is not None and sd < start_from:
+            continue
+        if start_before is not None and sd >= start_before:
+            continue
         days = ftmo.walk_days(by_date, all_days, start)
         if not days:
             continue
         o, reason, last, raised = run_flex(by_date, days, min_days=min_days, **kw)
         out.append({"outcome": o, "reason": reason, "raised": raised,
                     "cal_days": (days[last] - start).days + 1})
-    return _summ(out, contracts, MAX_CONTRACTS_MNQ)
+    return _summ(out, contracts, max_contracts)
 
 
 def simulate_tradeify(records, df, risk_dollars):
@@ -96,6 +115,8 @@ def simulate_tradeify(records, df, risk_dollars):
 
 def _summ(out, contracts, cap):
     n = len(out)
+    if n == 0:
+        return {"cohorts": 0}
     p = [o for o in out if o["outcome"] == "PASS"]
     f = [o for o in out if o["outcome"] == "FAIL"]
     d = sorted(o["cal_days"] for o in p)
