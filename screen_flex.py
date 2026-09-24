@@ -36,7 +36,8 @@ import fundednext_flex_rules as fx
 #  FDXM: EUR 5/pt ~ $5.85 at EURUSD 1.17, assumed to count as a mini (5 max) --
 #        Eurex availability on FundedNext is NOT confirmed.
 CONTRACTS = {"MNQ": (2.0, 50), "6E": (12_500.0, 50), "FDXM": (5.85, 5),
-             "MGC": (10.0, 50), "MCL": (100.0, 50), "6J": (12_500_000.0, 5)}
+             "MGC": (10.0, 50), "MCL": (100.0, 50), "6J": (12_500_000.0, 5),
+             "6JT": (12_500_000.0, 5), "MGCT": (10.0, 50)}
 RISKS = [int(x) for x in os.environ.get("FLEX_RISKS", "500,750,1000,1250,1500").split(",")]
 TFS = os.environ.get("FLEX_TIMEFRAMES")
 MAX_S = float(os.environ.get("FLEX_MAX_SECONDS", "0"))

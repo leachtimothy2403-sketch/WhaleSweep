@@ -131,4 +131,8 @@ COST_TABLE: Dict[str, float] = {
     "MGC":  0.312,
     "MCL":  0.0312,
     "6J":   0.000000996,
+    # Tokyo-clock variants (same instruments/costs, day + session windows on
+    # Asia/Tokyo time: SPACE's 03:00-16:00 windows then cover the Tokyo session).
+    "6JT":  0.000000996,
+    "MGCT": 0.312,
 }

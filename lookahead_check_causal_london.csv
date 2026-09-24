@@ -1,0 +1,7 @@
+causal,leg,tp,sess_start,trades,win,PF,expR,oos_pass,oos_days
+1,6E#5374,reversal_to_open,180,7565,50.17,0.88,-0.0602,9.5,15
+1,6E#12654,opposite_level,180,1580,65.76,1.548,0.1457,74.6,64
+1,MNQ#362,fixed_rr,300,2453,35.06,0.973,-0.0186,18.3,15
+1,MGC#7068,opposite_level,180,1433,63.92,1.204,0.0668,39.2,88
+1,MCL#8044,opposite_level,180,1151,67.25,1.421,0.123,54.8,73
+1,6J#9981,opposite_level,180,3045,37.6,1.161,0.1429,40.0,25

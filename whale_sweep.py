@@ -364,6 +364,11 @@ def _compute_tp(direction: str, entry: float, risk: float, p: dict,
     return entry - p["rr"] * risk if direction == "Sell" else entry + p["rr"] * risk
 
 
+# 2026-09-24: WS_CAUSAL_OPEN=1 removes a look-ahead bias (see generate_signals).
+# Default ON (2026-09-24). Set WS_CAUSAL_OPEN=0 only to reproduce pre-fix results.
+CAUSAL_OPEN = os.environ.get("WS_CAUSAL_OPEN", "1").lower() in ("1", "true", "yes")
+
+
 def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
     n = len(df)
     o = df["open"].to_numpy(); h = df["high"].to_numpy(); l = df["low"].to_numpy(); c = df["close"].to_numpy()
@@ -415,6 +420,12 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
 
         row0 = ds
         so_v = sess_open[row0]
+        if CAUSAL_OPEN:
+            # 2026-09-24 look-ahead fix: session_open_930 is the 09:30 open of the
+            # day, which is still in the FUTURE for sessions starting before
+            # 09:30 (180/300/420). Use the open of the first in-session bar,
+            # which is known when the session starts.
+            so_v = float(o[sub_start])
         raw_levels = [("PDH", pdh[row0]), ("PDL", pdl[row0])]
         if p["include_secondary_levels"]:
             raw_levels += [("PDH2", pdh2[row0]), ("PDL2", pdl2[row0]),
@@ -448,6 +459,10 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
             hi_, lo_, close_ = h[i], l[i], c[i]
             for lv in levels:
                 name, val, side, state = lv
+                # 2026-09-24 look-ahead fix (WS_CAUSAL_OPEN): LONDON_HIGH/LOW are the
+                # 03:00-08:00 NY high/low of THIS day -- not known until 08:00.
+                if CAUSAL_OPEN and name.startswith("LONDON") and ny_min[i] < 480:
+                    continue
                 if state == "await_rearm":
                     # Re-test/fakeout modeling: a level that already got
                     # swept+traded doesn't count as a fresh opportunity

@@ -175,4 +175,11 @@ if __name__ == "__main__":
         os.replace(cache + ".tmp", cache)
     if len(sys.argv) > 4 and sys.argv[4] == "--load-only":
         sys.exit(0)
+    # Optional session clock (2026-09-24): FUT_TZ=Asia/Tokyo re-anchors the day
+    # boundary, session windows (ny_minutes), PDH/PDL and session levels to the
+    # given timezone -- e.g. asset 6JT = yen with Tokyo-clock days/sessions.
+    # Front-month/roll selection above always stays on the CME (NY) session.
+    if os.environ.get("FUT_TZ"):
+        pc.NY_TZ = os.environ["FUT_TZ"]
+        print(f"[{asset}] session clock: {pc.NY_TZ}", flush=True)
     build(asset, df)
