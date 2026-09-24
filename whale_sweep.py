@@ -500,11 +500,15 @@ def generate_signals(df: pd.DataFrame, p: dict) -> List[dict]:
                     stop_ref = float(np.max(h[i:entry_j + 1]))
                 else:
                     stop_ref = float(np.min(l[i:entry_j + 1]))
-                sl_price = _compute_sl(direction, stop_ref, atr_j, p, levels)
+                # look-ahead fix (WS_CAUSAL_OPEN): stop extension / opposite-level
+                # target may only use levels already known at the entry bar.
+                known = [lv for lv in levels if not (CAUSAL_OPEN and lv[0].startswith("LONDON") and ny_min[entry_j] < 480)] \
+                    if CAUSAL_OPEN else levels
+                sl_price = _compute_sl(direction, stop_ref, atr_j, p, known)
                 risk = abs(entry_price - sl_price)
                 if risk <= 0 or np.isnan(risk):
                     continue
-                tp_price = _compute_tp(direction, entry_price, risk, p, so_v, levels)
+                tp_price = _compute_tp(direction, entry_price, risk, p, so_v, known)
                 signals.append({
                     "day_id": str(day_id[i]), "level": name, "direction": direction,
                     "sweep_idx": int(i), "entry_idx": int(entry_j),
