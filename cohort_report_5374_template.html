@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6E #5374 Flex Cohorts</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb; --page: #f9f9f7;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+    --gridline: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --good: #0ca30c; --critical: #d03b3b; --still: #898781; --success-text: #006300;
+    --series-blue: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19; --page: #0d0d0d;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --good: #0ca30c; --critical: #e66767; --still: #898781; --success-text: #0ca30c;
+      --series-blue: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --page: #0d0d0d;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --gridline: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --good: #0ca30c; --critical: #e66767; --still: #898781; --success-text: #0ca30c;
+    --series-blue: #3987e5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--page); }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 16px 80px; }
+  header h1 { font-size: 22px; margin: 0 0 4px; }
+  header .sub { color: var(--text-secondary); font-size: 14px; margin: 0 0 20px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .rules-grid, .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
+  .stat-row { margin-bottom: 16px; }
+  .tile .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .tile .value { font-size: 17px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .stat-tile .value { font-size: 24px; font-weight: 700; }
+  .stat-tile .note { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  h2.section-title { font-size: 16px; margin: 28px 0 12px; }
+  .chart-wrap { position: relative; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  svg.chart .grid { stroke: var(--gridline); stroke-width: 1; }
+  svg.chart .ref { stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 4 4; }
+  svg.chart .ref-label { fill: var(--text-secondary); font-size: 11px; }
+  svg.chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; transition: opacity .12s; }
+  svg.chart .line.pass { stroke: var(--good); } svg.chart .line.fail { stroke: var(--critical); } svg.chart .line.still { stroke: var(--still); }
+  svg.chart.hovering .line { opacity: 0.18; } svg.chart.hovering .line.hot { opacity: 1; stroke-width: 3; }
+  svg.chart .end { stroke: var(--surface-1); stroke-width: 2; }
+  svg.chart .end.pass { fill: var(--good); } svg.chart .end.fail { fill: var(--critical); } svg.chart .end.still { fill: var(--still); }
+  svg.chart.hovering .end { opacity: 0.18; } svg.chart.hovering .end.hot { opacity: 1; }
+  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); display: none; white-space: nowrap; }
+  .tooltip b { font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .legend i.pass { background: var(--good); } .legend i.fail { background: var(--critical); } .legend i.still { background: var(--still); }
+  .legend i.ref { background: none; border-top: 1px dashed var(--text-secondary); height: 0; }
+  .timeline { display: flex; flex-direction: column; gap: 6px; }
+  .timeline-row { display: grid; grid-template-columns: 92px 1fr 110px; align-items: center; gap: 10px; font-size: 12px; }
+  .timeline-row .date { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .timeline-track { position: relative; height: 18px; background: var(--gridline); border-radius: 4px; overflow: hidden; }
+  .timeline-bar { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; }
+  .timeline-bar.pass { background: var(--good); } .timeline-bar.fail { background: var(--critical); } .timeline-bar.still { background: var(--still); }
+  .timeline-row .days { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .cohort-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .cohort-head .title { font-size: 15px; font-weight: 600; }
+  .badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 3px 9px; border-radius: 20px; }
+  .badge.pass { background: rgba(12,163,12,0.14); color: var(--success-text); }
+  .badge.fail { background: rgba(208,59,59,0.14); color: var(--critical); }
+  .badge.still { background: rgba(137,135,129,0.16); color: var(--text-muted); }
+  .cohort-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); margin: 4px 0; }
+  .day-block { border-top: 1px solid var(--gridline); padding: 10px 0; }
+  .day-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; margin-bottom: 6px; }
+  .day-head .day-date { font-weight: 600; }
+  .day-head .day-eq { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .day-head .day-eq b { color: var(--text-primary); }
+  .note-pass { color: var(--success-text); font-weight: 700; font-size: 11.5px; text-transform: uppercase; }
+  .note-fail { color: var(--critical); font-weight: 700; font-size: 11.5px; text-transform: uppercase; }
+  .table-scroll { overflow-x: auto; }
+  table.trades { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 780px; }
+  table.trades th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; padding: 4px 6px; border-bottom: 1px solid var(--gridline); }
+  table.trades td { padding: 5px 6px; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+  table.trades .num { text-align: right; }
+  .pnl-pos { color: var(--success-text); } .pnl-neg { color: var(--critical); }
+  .foot { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <header>
+    <h1>6E #5374 · FundedNext Flex $100k · Weekly cohorts, last 3 months</h1>
+    <p class="sub" id="subhead"></p>
+  </header>
+
+  <div class="card"><div class="rules-grid" id="rules"></div></div>
+  <div class="stat-row" id="stats"></div>
+
+  <h2 class="section-title">Account balance by trading day, one line per weekly cohort</h2>
+  <div class="card">
+    <div class="chart-wrap" id="chart-wrap">
+      <svg class="chart" id="chart" viewBox="0 0 940 420" role="img" aria-label="Balance by trading day for each cohort"></svg>
+      <div class="tooltip" id="tip"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <h2 class="section-title">Cohort timeline</h2>
+  <div class="card"><div class="timeline" id="timeline"></div></div>
+
+  <h2 class="section-title">Daily trades and balance, most recent cohort first</h2>
+  <div id="cohorts"></div>
+
+  <div class="card foot" id="foot"></div>
+</div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const usd = v => (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", {maximumFractionDigits: 0});
+const usd2 = v => (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const px = v => v.toFixed(5);
+const hm = iso => iso.slice(11, 16);
+const cls = o => o === "PASS" ? "pass" : (o === "FAIL" ? "fail" : "still");
+const word = o => o === "PASS" ? "Passed" : (o === "FAIL" ? "Failed (max loss)" : "Still going");
+
+$("subhead").textContent = `${DATA.label} · session ${DATA.session} · data ${DATA.data_range[0]} to ${DATA.data_range[1]} · showing the ${DATA.cohorts.length} most recent weekly cohorts (Monday starts)`;
+
+const rules = [
+  ["Risk per trade", usd(DATA.risk)], ["Contracts", "6E mini, max 5"], ["Profit target", "$5,000"],
+  ["Max loss", "$2,500 EOD trailing, locks $100,100"], ["Consistency", "Best day ≤ 40% of profit"], ["Daily loss limit", "None"],
+];
+$("rules").innerHTML = rules.map(([l, v]) => `<div class="tile"><div class="label">${l}</div><div class="value">${v}</div></div>`).join("");
+
+const C = DATA.cohorts;
+const nP = C.filter(c => c.outcome === "PASS").length, nF = C.filter(c => c.outcome === "FAIL").length, nS = C.length - nP - nF;
+const pd = C.filter(c => c.outcome === "PASS").map(c => c.calendar_days).sort((a, b) => a - b);
+const ptd = C.filter(c => c.outcome === "PASS").map(c => c.trading_days).sort((a, b) => a - b);
+const stats = [
+  ["Passed (window)", `${nP} of ${C.length}`, `${Math.round(100 * nP / C.length)}% · ${nF} failed · ${nS} still going`],
+  ["Median days to pass", pd.length ? `${pd[Math.floor(pd.length / 2)]} days` : "–", ptd.length ? `${ptd[Math.floor(ptd.length / 2)]} trading days` : ""],
+  ["Full history", `${DATA.full_pass}% pass`, `${DATA.full_n} cohorts · ${DATA.full_fail}% fail · median ${DATA.full_med_days} days`],
+  ["Strategy", `PF ${DATA.pf.toFixed(2)}`, `win ${DATA.win.toFixed(1)}% · ${DATA.n_trades.toLocaleString()} trades / 6y`],
+  ["Actual risk per trade", usd(DATA.eff_risk_med), `median · ${DATA.capped_pct}% of trades hit the 5-contract cap`],
+];
+$("stats").innerHTML = stats.map(([l, v, n]) => `<div class="stat-tile tile"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join("");
+
+/* ---------- balance chart ---------- */
+(function chart() {
+  const svg = $("chart"), W = 940, H = 420, m = {l: 72, r: 24, t: 16, b: 40};
+  const series = C.map(c => ({c, pts: [[0, 100000], ...c.days.map((d, i) => [i + 1, d.day_end])]}));
+  const maxX = Math.max(...series.map(s => s.pts.length - 1), 1);
+  const ys = series.flatMap(s => s.pts.map(p => p[1])).concat([97500, 105000]);
+  let y0 = Math.floor((Math.min(...ys) - 500) / 1000) * 1000, y1 = Math.ceil((Math.max(...ys) + 500) / 1000) * 1000;
+  const X = x => m.l + (W - m.l - m.r) * x / maxX, Y = y => m.t + (H - m.t - m.b) * (1 - (y - y0) / (y1 - y0));
+  let g = "";
+  const step = (y1 - y0) / 1000 > 12 ? 2000 : 1000;
+  for (let y = y0; y <= y1; y += step) g += `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text x="${m.l - 8}" y="${Y(y) + 4}" text-anchor="end">${usd(y)}</text>`;
+  const xs = maxX <= 15 ? 1 : Math.ceil(maxX / 12);
+  for (let x = 0; x <= maxX; x += xs) g += `<text x="${X(x)}" y="${H - m.b + 18}" text-anchor="middle">${x}</text>`;
+  g += `<text x="${(m.l + W - m.r) / 2}" y="${H - 4}" text-anchor="middle">Trading day of the cohort</text>`;
+  const refs = [[105000, "Target $105,000 (can rise with the consistency rule)"], [100100, "MLL lock $100,100"], [97500, "Starting MLL floor $97,500"]];
+  refs.forEach(([y, t]) => { g += `<line class="ref" x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}"/><text class="ref-label" x="${W - m.r - 4}" y="${Y(y) - 5}" text-anchor="end">${t}</text>`; });
+  series.forEach((s, i) => {
+    const d = s.pts.map((p, j) => `${j ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+    const last = s.pts[s.pts.length - 1];
+    g += `<path class="line ${cls(s.c.outcome)}" data-i="${i}" d="${d}"/>`;
+    g += `<circle class="end ${cls(s.c.outcome)}" data-i="${i}" cx="${X(last[0])}" cy="${Y(last[1])}" r="4.5"/>`;
+  });
+  svg.innerHTML = g;
+  const tip = $("tip"), wrap = $("chart-wrap");
+  svg.addEventListener("mousemove", ev => {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width, sy = (ev.clientY - r.top) * H / r.height;
+    const xi = Math.max(0, Math.min(maxX, Math.round((sx - m.l) / (W - m.l - m.r) * maxX)));
+    let best = null;
+    series.forEach((s, i) => { const p = s.pts[Math.min(xi, s.pts.length - 1)]; const dy = Math.abs(Y(p[1]) - sy);
+      if (xi < s.pts.length && (!best || dy < best.dy)) best = {i, p, dy}; });
+    svg.classList.toggle("hovering", !!best);
+    svg.querySelectorAll(".line,.end").forEach(el => el.classList.toggle("hot", best && +el.dataset.i === best.i));
+    if (!best) { tip.style.display = "none"; return; }
+    const c = series[best.i].c, day = best.p[0] ? c.days[best.p[0] - 1] : null;
+    tip.innerHTML = `<div>Cohort <b>${c.start}</b> · ${word(c.outcome)}</div>
+      <div>Trading day <b>${best.p[0]}</b>${day ? ` (${day.date})` : ""}</div>
+      <div>Balance <b>${usd(best.p[1])}</b>${day ? ` · day P&L <b>${usd(day.day_end - day.day_start)}</b>` : ""}</div>
+      ${day ? `<div>Floor ${usd(day.floor)} · target ${usd(day.need)}</div>` : ""}`;
+    tip.style.display = "block";
+    const wr = wrap.getBoundingClientRect(); let lx = ev.clientX - wr.left + 14; if (lx + 260 > wr.width) lx -= 280;
+    tip.style.left = lx + "px"; tip.style.top = (ev.clientY - wr.top + 12) + "px";
+  });
+  svg.addEventListener("mouseleave", () => { svg.classList.remove("hovering"); tip.style.display = "none"; });
+  $("legend").innerHTML = `<span><i class="pass"></i>Passed (${nP})</span><span><i class="fail"></i>Failed (${nF})</span><span><i class="still"></i>Still going at data end (${nS})</span><span><i class="ref"></i>Target / floor references</span><span>Hover a line for the cohort, day and balance</span>`;
+})();
+
+/* ---------- timeline ---------- */
+const maxCal = Math.max(...C.map(c => c.calendar_days || 1));
+$("timeline").innerHTML = C.map(c => `<div class="timeline-row"><div class="date">${c.start}</div>
+  <div class="timeline-track"><div class="timeline-bar ${cls(c.outcome)}" style="width:${Math.max(3, 100 * c.calendar_days / maxCal)}%"></div></div>
+  <div class="days">${c.calendar_days}d · ${c.trading_days} td · ${word(c.outcome).split(" ")[0]}</div></div>`).join("");
+
+/* ---------- cohort detail ---------- */
+function tradeRow(t) {
+  const pc = t.pnl >= 0 ? "pnl-pos" : "pnl-neg";
+  return `<tr><td>${hm(t.entry_t)}</td><td>${hm(t.exit_t)}</td><td>${t.dir}</td><td>${t.level}</td>
+    <td class="num">${px(t.entry)}</td><td class="num">${px(t.sl)}</td><td class="num">${px(t.tp)}</td><td class="num">${px(t.exit)}</td>
+    <td>${t.outcome}</td><td class="num">${t.contracts}</td><td class="num">${t.r.toFixed(2)}R</td>
+    <td class="num ${pc}">${usd2(t.pnl)}</td><td class="num">${usd(t.bal)}</td></tr>`;
+}
+function dayBlock(d) {
+  const note = d.outcome === "PASS" ? `<span class="note-pass">Target reached: passed</span>` : d.outcome === "FAIL" ? `<span class="note-fail">Max loss floor hit: failed</span>` : "";
+  const rows = d.trades.length ? `<div class="table-scroll"><table class="trades"><thead><tr><th>Entry</th><th>Exit</th><th>Dir</th><th>Level swept</th>
+    <th class="num">Entry</th><th class="num">SL</th><th class="num">TP</th><th class="num">Exit</th><th>Outcome</th><th class="num">Ctr</th><th class="num">R</th>
+    <th class="num">P&amp;L</th><th class="num">Balance</th></tr></thead><tbody>${d.trades.map(tradeRow).join("")}</tbody></table></div>` : "";
+  return `<div class="day-block"><div class="day-head"><span class="day-date">${d.date}</span>${note}
+    <span class="day-eq">start ${usd(d.day_start)} → end <b>${usd(d.day_end)}</b> (${usd(d.day_end - d.day_start)}) · floor ${usd(d.floor)} · target ${usd(d.need)}</span></div>${rows}</div>`;
+}
+$("cohorts").innerHTML = C.slice().reverse().map((c, k) => `<div class="card">
+  <div class="cohort-head"><div class="title">Cohort starting ${c.start}</div><span class="badge ${cls(c.outcome)}">${word(c.outcome)}</span></div>
+  <div class="cohort-meta">${c.calendar_days} calendar days · ${c.trading_days} trading days · ending balance ${usd(c.end_bal)}</div>
+  <details ${k < 2 ? "open" : ""}><summary>Show ${c.trading_days} trading days</summary>${c.days.map(dayBlock).join("")}</details></div>`).join("");
+
+$("foot").innerHTML = `FundedNext Flex $100k evaluation rules as modeled: +$5,000 target; max loss $2,500 trailing from the highest end-of-day balance, locked once it reaches $100,100; no daily loss limit; consistency: the best single day must be at most 40% of total profit, otherwise the target rises to best day ÷ 0.4 (shown per day as "target"). Sizing: whole 6E contracts closest to ${usd(DATA.risk)} of risk on each trade's own stop, max 5 open across overlapping trades (extra trades are shrunk or skipped). Trades are realized at their real exit time; the floor and target are checked on closed-trade balance only, so open-trade drawdown is not modeled. Costs: 6E commission + 1 tick (0.0000996 per trade) already in every R. Times are Paris time. Trading day = a day on which the strategy took at least one trade. Data: CME 6E front-month 1-minute bars (Databento), back-adjusted at quarterly rolls: prices from 11 Sep 2026 on are the real December contract; earlier prices are the September contract shifted up by the roll gap (+0.0040), so they won't match a chart of the expired contract.`;
+</script>
+</body>
+</html>
