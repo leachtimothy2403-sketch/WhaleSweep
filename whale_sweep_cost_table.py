@@ -118,4 +118,17 @@ COST_TABLE: Dict[str, float] = {
     #   only starts 2025-03) -- see claude/dax_cfd_vs_futures.md.
     "6E":   0.0000996,
     "FDXM": 1.744,
+    # 2026-09-24, second futures batch (FundedNext uses the same NinjaTrader/
+    # Tradovate all-in rates as Tradeify: NQ 2.88/side = $5.76 RT on both).
+    # Round-trip commission / point value + 1 tick, in raw price units:
+    #   MGC (micro gold, $10/pt, tick 0.10):   $2.12/10  + 0.10      = 0.312
+    #       (GC mini would be 6.20/100 + 0.10 = 0.162 but $100/pt is too coarse)
+    #   MCL (micro crude, $100/pt, tick 0.01): $2.12/100 + 0.01      = 0.0312
+    #       (CL mini 6.00/1000 + 0.01 = 0.016, $1,000/pt too coarse)
+    #   6J  (yen, 12.5M JPY, tick 0.0000005):  $6.20/12.5M + 0.0000005 = 0.000000996
+    # Priced on full-size GC / CL / 6J Databento data (same points).
+    # Median cost / 5-min ATR (2024+): MGC 0.12, MCL 0.31, 6J 0.42 (6E 0.34, MNQ 0.07).
+    "MGC":  0.312,
+    "MCL":  0.0312,
+    "6J":   0.000000996,
 }

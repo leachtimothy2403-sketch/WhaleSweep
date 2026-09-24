@@ -41,15 +41,23 @@ TFS = [t.strip() for t in os.environ.get("FUT_TIMEFRAMES", "3min,5min").split(",
 def load_dbn(path):
     import databento as db
     parts = []
-    for ch in db.DBNStore.from_file(path).to_df(map_symbols=True, count=1_000_000):
+    store = db.DBNStore.from_file(path)
+    # memory: drop rows older than the history window chunk by chunk (big files, e.g. GC)
+    cutoff = (pd.Timestamp(store.end).tz_convert("UTC") - pd.Timedelta(days=YEARS * 365.25 + 30)) if YEARS > 0 else None
+    for ch in store.to_df(map_symbols=True, count=1_000_000):
+        if cutoff is not None:
+            ch = ch[ch.index >= cutoff]
+            if ch.empty:
+                continue
         ch = ch[~ch["symbol"].str.contains("-") & ~ch["symbol"].str.contains("SPD")]
         parts.append(pd.DataFrame({
             "open": ch["open"].astype("float64"), "high": ch["high"].astype("float64"),
             "low": ch["low"].astype("float64"), "close": ch["close"].astype("float64"),
             "volume": ch["volume"].astype("float64"), "iid": ch["instrument_id"].astype("int64"),
-            "symbol": ch["symbol"],
+            "symbol": ch["symbol"].astype("category"),
         }, index=ch.index))
     raw = pd.concat(parts).sort_index()
+    raw["symbol"] = raw["symbol"].astype(str)
     del parts
     raw.index = pd.DatetimeIndex(raw.index).tz_convert("UTC").as_unit("ms")
     raw.index.name = "ts"
