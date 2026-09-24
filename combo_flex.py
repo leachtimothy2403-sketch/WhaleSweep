@@ -97,7 +97,7 @@ def run_eval(by_day, days, day_stop):
     for i, d in enumerate(days):
         floor = min(eod_high - MLL, LOCK)
         ds = bal
-        for _, pnl in walk_day(by_day[d], day_stop):
+        for _, pnl in by_day[d]:
             bal += pnl
             if bal <= floor:
                 return "FAIL", i
@@ -116,7 +116,7 @@ def run_funded(by_day, days, start, day_stop, W=5_000.0, max_payouts=5, horizon=
             return paid, "horizon"
         floor = LOCK if locked else min(eod_high - MLL, LOCK)
         ds = bal
-        for _, pnl in walk_day(by_day[d], day_stop):
+        for _, pnl in by_day[d]:
             bal += pnl
             if bal <= floor:
                 return paid, "breach"
@@ -146,7 +146,8 @@ def cohorts(by_day, start_from=None, start_before=None, need_days=0):
 
 
 def evaluate(trades, risk_by_leg, day_stop, split):
-    by_day = size(trades, risk_by_leg)
+    raw = size(trades, risk_by_leg)
+    by_day = {d: walk_day(v, day_stop) for d, v in raw.items()}   # realized events, precomputed once
     res = {}
     for tag, kw in (("OOS", {"start_from": split}), ("full", {})):
         o = [(run_eval(by_day, days, day_stop), s, days) for s, days in cohorts(by_day, **kw)]

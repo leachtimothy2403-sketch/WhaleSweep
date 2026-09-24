@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two Flex Accounts</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb; --page: #f9f9f7;
+    --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #898781;
+    --gridline: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --series-1: #2a78d6; --series-2: #eb6834; --critical: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19; --page: #0d0d0d;
+      --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+      --gridline: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+      --series-1: #3987e5; --series-2: #d95926; --critical: #e66767;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --page: #0d0d0d;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #898781;
+    --gridline: #2c2c2a; --baseline: #383835; --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5; --series-2: #d95926; --critical: #e66767;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--page); }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 28px 16px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); font-size: 14px; margin: 0 0 20px; }
+  h2 { font-size: 16px; margin: 28px 0 12px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .stat-tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .stat-tile .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .stat-tile .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .stat-tile .note { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .chart-wrap { position: relative; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  svg.chart .grid { stroke: var(--gridline); }
+  svg.chart .base { stroke: var(--baseline); }
+  svg.chart .l1 { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; }
+  svg.chart .l2 { fill: none; stroke: var(--series-2); stroke-width: 2; stroke-linejoin: round; }
+  svg.chart .d1 { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+  svg.chart .d2 { fill: var(--series-2); stroke: var(--surface-1); stroke-width: 2; }
+  svg.chart .open1 { fill: var(--surface-1); stroke: var(--series-1); stroke-width: 2; }
+  svg.chart .open2 { fill: var(--surface-1); stroke: var(--series-2); stroke-width: 2; }
+  svg.chart .dlabel { font-size: 12px; fill: var(--text-primary); }
+  svg.chart .cross { stroke: var(--text-muted); stroke-width: 1; }
+  .tooltip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); display: none; white-space: nowrap; }
+  .tooltip i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+  th { text-align: left; font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; padding: 6px 8px; border-bottom: 1px solid var(--gridline); }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  tr.pick td { font-weight: 700; }
+  .foot { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  p.lead { font-size: 14px; color: var(--text-secondary); margin: 0 0 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="viz-root"><div class="wrap">
+  <h1>Two FundedNext Flex accounts</h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="stat-row" id="stats"></div>
+
+  <h2>Days to pass by cohort start week, last 2 years</h2>
+  <div class="card">
+    <div class="chart-wrap" id="cw">
+      <svg class="chart" id="chart" viewBox="0 0 940 380" role="img" aria-label="Calendar days to pass the evaluation for each weekly start, accounts A and B"></svg>
+      <div class="tooltip" id="tip"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <h2>Account B risk options (6E #12654 + MNQ #362)</h2>
+  <div class="card"><p class="lead">Out-of-sample = cohorts starting after the split date, never seen by the search. Bold row = the configuration used above.</p><div class="table-scroll"><table id="grid"></table></div></div>
+
+  <h2>Account A: raising 6E #5374 risk per trade</h2>
+  <div class="card"><p class="lead" id="sweep-lead"></p><div class="table-scroll"><table id="sweep"></table></div></div>
+
+  <div class="card foot" id="foot"></div>
+</div></div>
+<script>
+const D = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const usd = v => "$" + Math.round(v).toLocaleString("en-US");
+const C = D.cohorts;
+const passA = C.filter(c => c.outcome_A === "PASS").map(c => c.days_A).sort((a, b) => a - b);
+const passB = C.filter(c => c.outcome_B === "PASS").map(c => c.days_B).sort((a, b) => a - b);
+const med = a => a.length ? a[Math.floor(a.length / 2)] : "–";
+$("sub").textContent = `A = 6E #5374 at $500/trade · B = 6E #12654 $${D.B_cfg["6E#12654"]} + MNQ #362 $${D.B_cfg["MNQ#362"]}, no day stop · Flex $100k evaluation rules · ${C.length} weekly starts since ${C[0].start}`;
+
+$("stats").innerHTML = [
+  ["Median days to pass", `A ${med(passA)} · B ${med(passB)}`, "calendar days, last 2 years"],
+  ["Daily P&L correlation", D.corr_daily_pnl.toFixed(2), `weekly ${D.corr_weekly_pnl.toFixed(2)} · all history`],
+  ["Days-to-pass correlation", D.corr_days_to_pass.toFixed(2), "same start week, both passed"],
+  ["Both accounts fail", `${D.p_fail_both}%`, `A fails ${D.p_fail_A}% · B fails ${D.p_fail_B}% (all history)`],
+  ["First of the two to pass", `${D.median_first_pass_days} days`, "median, all history"],
+].map(([l, v, n]) => `<div class="stat-tile"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`).join("");
+
+(function chart() {
+  const svg = $("chart"), W = 940, H = 380, m = {l: 48, r: 70, t: 16, b: 44};
+  const n = C.length, maxY = Math.max(...C.map(c => Math.max(c.days_A || 0, c.days_B || 0))) + 2;
+  const X = i => m.l + (W - m.l - m.r) * i / (n - 1), Y = v => m.t + (H - m.t - m.b) * (1 - v / maxY);
+  let g = "";
+  for (let v = 0; v <= maxY; v += 5) g += `<line class="${v ? "grid" : "base"}" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
+  C.forEach((c, i) => { if (c.start.slice(8) <= "07") { const mo = new Date(c.start + "T12:00:00"); if (mo.getMonth() % 3 === 0) g += `<text x="${X(i)}" y="${H - m.b + 18}" text-anchor="middle">${mo.toLocaleString("en-GB", {month: "short", year: "2-digit"})}</text>`; } });
+  g += `<text x="${(m.l + W - m.r) / 2}" y="${H - 6}" text-anchor="middle">Cohort start week</text>`;
+  g += `<text x="${m.l - 36}" y="${m.t + 4}" text-anchor="start">days</text>`;
+  // only passed cohorts are drawn as a line; failed cohorts get an open marker at their fail day;
+  // cohorts still running at the end of the data are left out (their day count is just data length)
+  const path = k => { let d = "", pen = false; C.forEach((c, i) => { if (c["outcome_" + k] === "PASS") { d += `${pen ? "L" : "M"}${X(i).toFixed(1)},${Y(c["days_" + k]).toFixed(1)}`; pen = true; } else pen = false; }); return d; };
+  g += `<path class="l1" d="${path("A")}"/><path class="l2" d="${path("B")}"/>`;
+  C.forEach((c, i) => ["A", "B"].forEach((k, j) => { if (c["outcome_" + k] === "FAIL") g += `<circle class="open${j + 1}" cx="${X(i)}" cy="${Y(c["days_" + k])}" r="4.5"/>`; }));
+  const lastIdx = k => { for (let i = n - 1; i >= 0; i--) if (C[i]["outcome_" + k] === "PASS") return i; return 0; };
+  let yA = Y(C[lastIdx("A")].days_A), yB = Y(C[lastIdx("B")].days_B);
+  if (Math.abs(yA - yB) < 14) { if (yA <= yB) yB = yA + 14; else yA = yB + 14; }
+  g += `<text class="dlabel" x="${W - m.r + 8}" y="${yA + 4}">A</text><text class="dlabel" x="${W - m.r + 8}" y="${yB + 4}">B</text>`;
+  g += `<line class="cross" id="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" style="display:none"/>`;
+  g += `<circle class="d1" id="ha" r="5" style="display:none"/><circle class="d2" id="hb" r="5" style="display:none"/>`;
+  svg.innerHTML = g;
+  const tip = $("tip"), cw = $("cw");
+  svg.addEventListener("mousemove", ev => {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(n - 1, Math.round((sx - m.l) / (W - m.l - m.r) * (n - 1)))), c = C[i];
+    const xh = $("xh"); xh.style.display = ""; xh.setAttribute("x1", X(i)); xh.setAttribute("x2", X(i));
+    [["ha", "A"], ["hb", "B"]].forEach(([id, k]) => { const e = $(id); e.style.display = ""; e.setAttribute("cx", X(i)); e.setAttribute("cy", Y(c["days_" + k])); });
+    const st = k => c["outcome_" + k] === "PASS" ? `passed in <b>${c["days_" + k]}</b> days` : (c["outcome_" + k] === "FAIL" ? `failed after ${c["days_" + k]} days` : `still going (${c["days_" + k]} days of data)`);
+    tip.innerHTML = `<div>Start <b>${c.start}</b></div><div><i style="background:var(--series-1)"></i>A: ${st("A")}</div><div><i style="background:var(--series-2)"></i>B: ${st("B")}</div>`;
+    tip.style.display = "block";
+    const wr = cw.getBoundingClientRect(); let lx = ev.clientX - wr.left + 14; if (lx + 240 > wr.width) lx -= 260;
+    tip.style.left = lx + "px"; tip.style.top = (ev.clientY - wr.top + 12) + "px";
+  });
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; ["xh", "ha", "hb"].forEach(id => $(id).style.display = "none"); });
+  $("legend").innerHTML = `<span><i style="background:var(--series-1)"></i>A: 6E #5374</span><span><i style="background:var(--series-2)"></i>B: 6E #12654 + MNQ #362</span><span>○ open marker = failed (none in this window)</span><span>${C.filter(c => c.outcome_A === "STILL" || c.outcome_B === "STILL").length} most recent starts still running at data end are not drawn</span>`;
+})();
+
+function table(el, cols, rows, pick) {
+  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c[2] || ""}">${c[0]}</th>`).join("")}</tr></thead><tbody>` +
+    rows.map(r => `<tr class="${pick && pick(r) ? "pick" : ""}">${cols.map(c => `<td class="${c[2] || ""}">${c[1](r)}</td>`).join("")}</tr>`).join("") + "</tbody>";
+}
+const pct = v => `${(+v).toFixed(1)}%`;
+table($("grid"), [
+  ["6E #12654", r => usd(r["6E#12654"])], ["MNQ #362", r => usd(r["MNQ#362"])], ["Day stop", r => r.stop === "-" ? "none" : usd(r.stop)],
+  ["OOS pass", r => pct(r["OOS pass%"]), "num"], ["OOS days", r => r["OOS days"], "num"], ["OOS p90 days", r => r["OOS p90"], "num"],
+  ["Funded: reach 5 payouts", r => pct(r["reach 5 payouts%"]), "num"], ["Days to 5th", r => r["days to 5th"], "num"], ["12m no cap", r => usd(r["12m E$ uncapped"]), "num"],
+], D.grid.filter(r => r.stop === "-"), r => r["6E#12654"] === D.B_cfg["6E#12654"] && r["MNQ#362"] === D.B_cfg["MNQ#362"]);
+
+$("sweep-lead").textContent = "The account allows 5 6E minis. Once risk per trade is above about $650, almost every trade is already at 5 contracts, so the 'risk' setting stops changing anything: the median actual risk levels off at about $640.";
+table($("sweep"), [
+  ["Risk setting", r => usd(r.risk)], ["Median actual risk", r => usd(r["median actual risk$"]), "num"], ["Trades at 5-contract cap", r => pct(r["capped%"]), "num"],
+  ["OOS pass", r => pct(r["OOS pass%"]), "num"], ["OOS days", r => r["OOS days"], "num"], ["Full-history pass", r => pct(r["full pass%"]), "num"],
+  ["Funded: reach 5 payouts", r => pct(r["reach 5 payouts%"]), "num"], ["Days to 5th", r => r["days to 5th"], "num"], ["12m no cap", r => usd(r["12m E$ uncapped"]), "num"],
+], D.sweep.filter(r => r.stop === "-"), r => r.risk === 500);
+
+$("foot").textContent = `Event-accurate simulation: trades from all legs merged in real entry-time order, P&L realized at the real exit time, a shared limit of 5 minis / 50 micros (one 6E mini = 10 micro units), no day stop. Flex $100k evaluation: +$5,000 target, $2,500 max loss trailing from the highest end-of-day balance and locked at $100,100, best day at most 40% of profit (otherwise the target rises). Days = calendar days from the Monday start to the pass. Out-of-sample split: ${D.split}. Funded: payout after 5 days of at least $200 profit, withdraw min(50% of profit, $2,500) once profit is at least $5,000, 95% split; "reach 5 payouts" is the help-centre 5-payout cap; "12m no cap" assumes payouts continue for 12 months. Correlation is computed on daily dollar P&L of the two accounts over the full common history (2020-09 to 2026-09).`;
+</script>
+</body>
+</html>
